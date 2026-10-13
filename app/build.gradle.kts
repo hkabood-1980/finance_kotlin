@@ -55,6 +55,13 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
+
+    // Navigation
+    implementation(libs.androidx.navigation.compose)
+
+    // ViewModel
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
 
     // Room
     implementation(libs.androidx.room.runtime)
@@ -75,16 +82,4 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
-}
-
-dependencies {
-    // ... بقیه
-
-    // DataStore
-    implementation("androidx.datastore:datastore-preferences:1.1.1")
-
-    // Gson
-    implementation("com.google.code.gson:gson:2.11.0")
-
-    // ... بقیه
 }

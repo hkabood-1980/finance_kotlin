@@ -10,7 +10,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.hkaboodvand.finacemobile.ui.theme.FinacemobileTheme
-import com.hkaboodvand.finacemobile.ui.screens.HomeScreen
+import com.hkaboodvand.finacemobile.ui.navigation.AppNavigation
 
 class MainActivity : ComponentActivity() {
 
@@ -27,6 +27,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // فعال‌سازی RTL
+        window.decorView.layoutDirection = android.view.View.LAYOUT_DIRECTION_RTL
+
         // درخواست مجوز پیامک
         requestPermissionLauncher.launch(
             arrayOf(
@@ -41,7 +44,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    HomeScreen()
+                    AppNavigation()
                 }
             }
         }
