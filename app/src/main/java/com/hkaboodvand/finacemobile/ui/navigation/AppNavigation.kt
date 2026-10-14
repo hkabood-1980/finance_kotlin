@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.rememberNavController
 import com.hkaboodvand.finacemobile.ui.screens.HomeScreen
 import com.hkaboodvand.finacemobile.ui.screens.AddCardScreen
@@ -42,9 +44,30 @@ fun AppNavigation(
         composable(Routes.CARD_LIST) {
             CardListScreen(
                 onBack = { navController.popBackStack() },
-                onAddCard = { navController.navigate(Routes.ADD_CARD) }
+                onAddCard = { navController.navigate(Routes.ADD_CARD) },
+                onEditCard = { accountId ->
+                    navController.navigate("edit_card/$accountId")
+                }
             )
         }
+        composable(
+                route = "edit_card/{accountId}",
+                arguments = listOf(
+                    navArgument("accountId") { type = NavType.LongType }
+                )
+            ) { backStackEntry ->
+                val accountId = backStackEntry.arguments?.getLong("accountId")
+                AddCardScreen(
+                    accountId = accountId,
+                    onBack = { navController.popBackStack() },
+                    onSaved = {
+                        navController.popBackStack(
+                            route = Routes.CARD_LIST,
+                            inclusive = false
+                        )
+                    }
+                )
+            }
 
         composable(Routes.ADD_CARD) {
             AddCardScreen(
