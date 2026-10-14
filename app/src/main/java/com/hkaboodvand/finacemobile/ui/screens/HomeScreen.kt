@@ -38,31 +38,31 @@ import java.util.Locale
 // ─────────────────────────────────────────
 // رنگ‌ها — نسخه ملایم (Pastel)
 // ─────────────────────────────────────────
-val COLOR_PRIMARY_START = Color(0xFF7EA6E0)
+val COLOR_PRIMARY_START = Color(0xFF2196F3)
 val COLOR_PRIMARY_END = Color(0xFF5B8DD9)
 
-val COLOR_SUCCESS_START = Color(0xFF7ECBA1)
+val COLOR_SUCCESS_START = Color(0xFF6CD29A)
 val COLOR_SUCCESS_END = Color(0xFF5BB88A)
 
-val COLOR_DANGER_START = Color(0xFFE8908A)
+val COLOR_DANGER_START = Color(0xFFF6655A)
 val COLOR_DANGER_END = Color(0xFFD97570)
 
-val COLOR_INFO_START = Color(0xFFA692DC)
+val COLOR_INFO_START = Color(0xFF9277DC)
 val COLOR_INFO_END = Color(0xFF8B75C9)
 
-val COLOR_WARNING_START = Color(0xFFE8B96A)
+val COLOR_WARNING_START = Color(0xFFEEC856)
 val COLOR_WARNING_END = Color(0xFFD4A356)
 
-val COLOR_PINK_START = Color(0xFFE68FB8)
+val COLOR_PINK_START = Color(0xFFEF6DAA)
 val COLOR_PINK_END = Color(0xFFD178A3)
 
-val COLOR_CYAN_START = Color(0xFF7EC4D9)
+val COLOR_CYAN_START = Color(0xFF68C5E1)
 val COLOR_CYAN_END = Color(0xFF5BAEC9)
 
-val COLOR_INDIGO_START = Color(0xFF8B8FE0)
+val COLOR_INDIGO_START = Color(0xFF6E74EE)
 val COLOR_INDIGO_END = Color(0xFF6E72CC)
 
-val COLOR_GRAY_START = Color(0xFF95A3B3)
+val COLOR_GRAY_START = Color(0xFF647191)
 val COLOR_GRAY_END = Color(0xFF7A8899)
 
 // تابع کمکی برای نمایش پول با کاما
@@ -116,7 +116,7 @@ fun HomeScreen(
                     Text(
                         "💰 مدیریت امور مالی",
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = Color(0xFF111213)
                     )
                 },
                 actions = {
@@ -138,42 +138,56 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(Color(0xFFF0F4F8))
+                .background(Color(0x5B74CDD9))
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // ─── کارت‌های درآمد و هزینه ───
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                StatCard(
-                    icon = "💵",
-                    title = "درآمد کل",
-                    value = totalIncome - initialBalance,
-                    startColor = COLOR_SUCCESS_START,
-                    endColor = COLOR_SUCCESS_END,
-                    modifier = Modifier.weight(1f)
-                )
-                StatCard(
-                    icon = "💸",
-                    title = "هزینه کل",
-                    value = totalExpense,
-                    startColor = COLOR_DANGER_START,
-                    endColor = COLOR_DANGER_END,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // ─── موجودی کل ───
+            // ─── موجودی اولیه کل ───
             BalanceCard(
-                title = "💰 موجودی کل",
-                value = totalBalance,
+                icon = "💰",
+                title = "موجودی اولیه کل",
+                value = initialBalance,
+                startColor = COLOR_PRIMARY_START,
+                endColor = COLOR_PRIMARY_END,
+                isLarge = false
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // ─── درآمد کل ───
+            BalanceCard(
+                icon = "💵",
+                title = "درآمد کل",
+                value = totalIncome - initialBalance,
+                startColor = COLOR_SUCCESS_START,
+                endColor = COLOR_SUCCESS_END,
+                isLarge = false
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // ─── هزینه کل ───
+            BalanceCard(
+                icon = "💸",
+                title = "هزینه کل",
+                value = totalExpense,
+                startColor = COLOR_DANGER_START,
+                endColor = COLOR_DANGER_END,
+                isLarge = false
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // ─── موجودی کل (فونت بزرگ‌تر) ───
+            BalanceCard(
+                icon = "💰",
+                title = "موجودی کل",
+                value = (totalIncome + initialBalance) - totalExpense,
                 startColor = COLOR_INFO_START,
-                endColor = COLOR_INFO_END
+                endColor = COLOR_INFO_END,
+                isLarge = true
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -373,44 +387,51 @@ fun StatCard(
 // ─────────────────────────────────────────
 @Composable
 fun BalanceCard(
+    icon: String,
     title: String,
     value: Double,
     startColor: Color,
-    endColor: Color
+    endColor: Color,
+    isLarge: Boolean = false
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(95.dp),
-        shape = RoundedCornerShape(18.dp),
+            .height(if (isLarge) 80.dp else 65.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = if (isLarge) 8.dp else 5.dp
+        )
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
-                    Brush.linearGradient(
-                        colors = listOf(startColor, endColor)
-                    )
-                )
+                    Brush.linearGradient(colors = listOf(startColor, endColor))
+                ),
+            contentAlignment = Alignment.Center
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(20.dp),
+                    .padding(horizontal = 18.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = title,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = icon, fontSize = if (isLarge) 24.sp else 20.sp)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = title,
+                        fontSize = if (isLarge) 18.sp else 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
                 Text(
                     text = formatMoney(value),
-                    fontSize = 18.sp,
+                    fontSize = if (isLarge) 20.sp else 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
@@ -469,11 +490,11 @@ fun MenuButton(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Text(text = icon, fontSize = 28.sp)
+                Text(text = icon, fontSize = 32.sp)
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = title,
-                    fontSize = 13.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
                     textAlign = TextAlign.Center
