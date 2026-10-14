@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import com.hkaboodvand.finacemobile.data.db.entity.SmsMapping
 import com.hkaboodvand.finacemobile.data.db.entity.SmsQueue
 import kotlinx.coroutines.flow.Flow
@@ -29,6 +30,9 @@ interface SmsDao {
 
     @Query("UPDATE sms_queue SET status = :status, accountId = :accountId WHERE id = :id")
     suspend fun updateStatus(id: Long, status: String, accountId: Long?)
+
+    @Update
+    suspend fun updateSms(sms: SmsQueue)
 
     @Query("DELETE FROM sms_queue WHERE id = :id")
     suspend fun deleteSms(id: Long)

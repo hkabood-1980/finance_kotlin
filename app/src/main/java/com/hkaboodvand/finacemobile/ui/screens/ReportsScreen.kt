@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -19,6 +20,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -26,6 +28,7 @@ import com.hkaboodvand.finacemobile.data.db.AppDatabase
 import com.hkaboodvand.finacemobile.data.db.entity.Account
 import com.hkaboodvand.finacemobile.data.db.entity.Transaction
 import com.hkaboodvand.finacemobile.data.repository.FinanceRepository
+import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -40,8 +43,6 @@ val RP_DANGER_START = Color(0xFFE8908A)
 val RP_DANGER_END = Color(0xFFD97570)
 val RP_PRIMARY_START = Color(0xFF7EA6E0)
 val RP_PRIMARY_END = Color(0xFF5B8DD9)
-val RP_WARNING_START = Color(0xFFE8B96A)
-val RP_WARNING_END = Color(0xFFD4A356)
 val RP_PINK_START = Color(0xFFE68FB8)
 val RP_PINK_END = Color(0xFFD178A3)
 val RP_BG = Color(0xFFF0F4F8)
@@ -61,6 +62,16 @@ val CHART_COLORS = listOf(
     Color(0xFFD4A356)
 )
 
+// دسته‌های پیشنهادی
+val RP_EXPENSE_CATEGORIES = listOf(
+    "غذا", "حمل و نقل", "لباس", "خانه", "درمان",
+    "آموزش", "سرگرمی", "قبض و شارژ", "هدیه", "سفر", "سایر"
+)
+
+val RP_INCOME_CATEGORIES = listOf(
+    "حقوق", "هدیه", "فروش", "سود بانکی", "اجاره", "فریلنس", "یارانه", "سایر"
+)
+
 // ─────────────────────────────────────────
 // توابع کمکی
 // ─────────────────────────────────────────
@@ -69,16 +80,29 @@ fun formatMoneyRP(value: Double): String {
     return "${formatter.format(value.toLong())} تومان"
 }
 
-fun formatShortMoney(value: Double): String {
+fun formatShortMoneyRP(value: Double): String {
     val formatter = NumberFormat.getNumberInstance(Locale.US)
     return formatter.format(value.toLong())
 }
 
-// تبدیل تاریخ میلادی (yyyy-MM-dd) به شمسی
-// ─────────────────────────────────────────
+fun formatNumberWithCommaRP(input: String): String {
+    if (input.isEmpty()) return ""
+    val digitsOnly = input.filter { it.isDigit() }
+    if (digitsOnly.isEmpty()) return ""
+    return try {
+        val number = digitsOnly.toLong()
+        NumberFormat.getNumberInstance(Locale.US).format(number)
+    } catch (e: Exception) {
+        digitsOnly
+    }
+}
+
+fun parseFormattedNumberRP(input: String): String {
+    return input.filter { it.isDigit() }
+}
+
 // تبدیل تاریخ میلادی به شمسی (بدون کتابخانه)
-// ─────────────────────────────────────────
-fun gregorianToJalali(gy: Int, gm: Int, gd: Int): Triple<Int, Int, Int> {
+fun gregorianToJalaliRP(gy: Int, gm: Int, gd: Int): Triple<Int, Int, Int> {
     val gDaysInMonth = intArrayOf(0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334)
     val gy2 = if (gm > 2) gy + 1 else gy
     var days = 355666 + (365 * gy) + ((gy2 + 3) / 4) - ((gy2 + 99) / 100) +
@@ -103,29 +127,25 @@ fun gregorianToJalali(gy: Int, gm: Int, gd: Int): Triple<Int, Int, Int> {
     return Triple(jy, jm, jd)
 }
 
-fun toJalali(miladiDate: String): String {
+fun toJalaliRP(miladiDate: String): String {
     return try {
         val parts = miladiDate.take(10).split("-")
         if (parts.size != 3) return miladiDate
-        val gy = parts[0].toInt()
-        val gm = parts[1].toInt()
-        val gd = parts[2].toInt()
-        val (jy, jm, jd) = gregorianToJalali(gy, gm, gd)
+        val (jy, jm, jd) = gregorianToJalaliRP(
+            parts[0].toInt(), parts[1].toInt(), parts[2].toInt()
+        )
         String.format(Locale.US, "%04d/%02d/%02d", jy, jm, jd)
     } catch (e: Exception) {
         miladiDate
     }
 }
 
-// استخراج سال و ماه شمسی از یه تاریخ میلادی
-fun getJalaliYearMonth(miladiDate: String): Pair<Int, Int> {
+fun getJalaliYearMonthRP(miladiDate: String): Pair<Int, Int> {
     return try {
         val parts = miladiDate.take(10).split("-")
         if (parts.size != 3) return Pair(0, 0)
-        val (jy, jm, _) = gregorianToJalali(
-            parts[0].toInt(),
-            parts[1].toInt(),
-            parts[2].toInt()
+        val (jy, jm, _) = gregorianToJalaliRP(
+            parts[0].toInt(), parts[1].toInt(), parts[2].toInt()
         )
         Pair(jy, jm)
     } catch (e: Exception) {
@@ -133,8 +153,8 @@ fun getJalaliYearMonth(miladiDate: String): Pair<Int, Int> {
     }
 }
 
-fun getJalaliYear(miladiDate: String): Int {
-    return getJalaliYearMonth(miladiDate).first
+fun getJalaliYearRP(miladiDate: String): Int {
+    return getJalaliYearMonthRP(miladiDate).first
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -143,60 +163,57 @@ fun ReportsScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     val db = remember { AppDatabase.getInstance(context) }
     val repo = remember { FinanceRepository(db) }
 
-    // داده‌های خام
     var allTransactions by remember { mutableStateOf<List<Transaction>>(emptyList()) }
     var accounts by remember { mutableStateOf<List<Account>>(emptyList()) }
 
-    // فیلترها
     var selectedAccountId by remember { mutableStateOf<Long?>(null) }
     var selectedType by remember { mutableStateOf("هزینه") }
     var selectedRange by remember { mutableStateOf("ماه") }
-
-    // برای بازه‌ی ماهانه
     var selectedYear by remember { mutableStateOf(0) }
     var selectedMonth by remember { mutableStateOf(0) }
 
-    // منوها
     var showAccountMenu by remember { mutableStateOf(false) }
     var showTypeMenu by remember { mutableStateOf(false) }
     var showYearMenu by remember { mutableStateOf(false) }
     var showMonthMenu by remember { mutableStateOf(false) }
 
-    // بارگذاری داده‌ها
+    var selectedTxForEdit by remember { mutableStateOf<Transaction?>(null) }
+    var showEditDialog by remember { mutableStateOf(false) }
+
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var txToDelete by remember { mutableStateOf<Transaction?>(null) }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+
     LaunchedEffect(Unit) {
         repo.getAllTransactions().collect { list ->
             allTransactions = list
             if (list.isNotEmpty() && selectedYear == 0) {
                 val latest = list.maxByOrNull { it.date }?.date ?: ""
-                val (y, m) = getJalaliYearMonth(latest)
+                val (y, m) = getJalaliYearMonthRP(latest)
                 selectedYear = y
                 selectedMonth = m
             }
         }
     }
     LaunchedEffect(Unit) {
-        repo.getAllAccounts().collect { list ->
-            accounts = list
-        }
+        repo.getAllAccounts().collect { list -> accounts = list }
     }
 
-    // ─── فیلتر تراکنش‌ها ───
     val filteredTransactions = allTransactions.filter { tx ->
         val accountOk = selectedAccountId == null || tx.accountId == selectedAccountId
         val typeOk = tx.type == selectedType
         val rangeOk = when (selectedRange) {
             "ماه" -> {
-                val (y, m) = getJalaliYearMonth(tx.date)
+                val (y, m) = getJalaliYearMonthRP(tx.date)
                 y == selectedYear && m == selectedMonth
             }
-            "سال" -> {
-                val y = getJalaliYear(tx.date)
-                y == selectedYear
-            }
+            "سال" -> getJalaliYearRP(tx.date) == selectedYear
             else -> true
         }
         accountOk && typeOk && rangeOk
@@ -210,15 +227,13 @@ fun ReportsScreen(
         .toList()
         .sortedByDescending { it.second }
 
-    // ماه قبل
     val prevMonthTotal = if (selectedRange == "ماه") {
         val prevMonth = if (selectedMonth == 1) 12 else selectedMonth - 1
         val prevYear = if (selectedMonth == 1) selectedYear - 1 else selectedYear
-
         allTransactions.filter { tx ->
             val accountOk = selectedAccountId == null || tx.accountId == selectedAccountId
             val typeOk = tx.type == selectedType
-            val (y, m) = getJalaliYearMonth(tx.date)
+            val (y, m) = getJalaliYearMonthRP(tx.date)
             accountOk && typeOk && y == prevYear && m == prevMonth
         }.sumOf { it.amount }
     } else 0.0
@@ -255,7 +270,8 @@ fun ReportsScreen(
                     containerColor = RP_INFO_START
                 )
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -267,7 +283,7 @@ fun ReportsScreen(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            // ─── بخش فیلترها ───
+            // ─── فیلترها ───
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -292,14 +308,14 @@ fun ReportsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        ReportFilterButton(
+                        RPFilterButton(
                             icon = "💳",
                             text = if (selectedAccountId == null) "همه حساب‌ها"
                             else accounts.find { it.id == selectedAccountId }?.name ?: "؟",
                             modifier = Modifier.weight(1f),
                             onClick = { showAccountMenu = true }
                         )
-                        ReportFilterButton(
+                        RPFilterButton(
                             icon = if (selectedType == "هزینه") "💸" else "💵",
                             text = selectedType,
                             modifier = Modifier.weight(1f),
@@ -313,19 +329,19 @@ fun ReportsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        RangeButton(
+                        RPRangeButton(
                             text = "ماه",
                             isSelected = selectedRange == "ماه",
                             modifier = Modifier.weight(1f),
                             onClick = { selectedRange = "ماه" }
                         )
-                        RangeButton(
+                        RPRangeButton(
                             text = "سال",
                             isSelected = selectedRange == "سال",
                             modifier = Modifier.weight(1f),
                             onClick = { selectedRange = "سال" }
                         )
-                        RangeButton(
+                        RPRangeButton(
                             text = "همه",
                             isSelected = selectedRange == "همه",
                             modifier = Modifier.weight(1f),
@@ -340,19 +356,17 @@ fun ReportsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            ReportFilterButton(
+                            RPFilterButton(
                                 icon = "📅",
                                 text = selectedYear.toString(),
                                 modifier = Modifier.weight(1f),
                                 onClick = { showYearMenu = true }
                             )
-
                             if (selectedRange == "ماه") {
-                                ReportFilterButton(
+                                RPFilterButton(
                                     icon = "📆",
                                     text = if (selectedMonth in 1..12)
-                                        monthNames[selectedMonth - 1]
-                                    else "انتخاب ماه",
+                                        monthNames[selectedMonth - 1] else "انتخاب ماه",
                                     modifier = Modifier.weight(1f),
                                     onClick = { showMonthMenu = true }
                                 )
@@ -405,14 +419,12 @@ fun ReportsScreen(
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
-
                         if (selectedRange == "ماه" && prevMonthTotal > 0) {
                             Spacer(modifier = Modifier.height(8.dp))
                             val diff = totalFiltered - prevMonthTotal
                             val percent = (diff / prevMonthTotal) * 100
                             val arrow = if (diff > 0) "▲" else "▼"
                             val sign = if (diff > 0) "+" else ""
-
                             Text(
                                 text = "$arrow نسبت به ماه قبل: $sign${String.format(Locale.US, "%.1f", percent)}%",
                                 fontSize = 13.sp,
@@ -425,7 +437,7 @@ fun ReportsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // ─── نمودار دایره‌ای ───
+            // ─── نمودار ───
             if (byCategory.isNotEmpty() && totalFiltered > 0) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -444,29 +456,24 @@ fun ReportsScreen(
                                 color = RP_TEXT
                             )
                         }
-
                         Spacer(modifier = Modifier.height(16.dp))
-
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(250.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            DonutChart(
+                            RPDonutChart(
                                 data = byCategory.map { it.second.toFloat() },
                                 colors = CHART_COLORS.take(byCategory.size),
-                                centerText = formatShortMoney(totalFiltered)
+                                centerText = formatShortMoneyRP(totalFiltered)
                             )
                         }
-
                         Spacer(modifier = Modifier.height(16.dp))
-
                         byCategory.forEachIndexed { index, pair ->
                             val category = pair.first
                             val amount = pair.second
                             val percent = (amount / totalFiltered) * 100
-
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -497,7 +504,7 @@ fun ReportsScreen(
                                         color = RP_TEXT
                                     )
                                     Text(
-                                        text = formatShortMoney(amount),
+                                        text = formatShortMoneyRP(amount),
                                         fontSize = 11.sp,
                                         color = RP_TEXT_LIGHT
                                     )
@@ -507,11 +514,10 @@ fun ReportsScreen(
                         }
                     }
                 }
-
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // ─── خلاصه درآمد و هزینه ───
+            // ─── خلاصه درآمد/هزینه ───
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -529,22 +535,20 @@ fun ReportsScreen(
                             color = RP_TEXT
                         )
                     }
-
                     Spacer(modifier = Modifier.height(12.dp))
-
-                    SummaryRow("💵 درآمد", totalIncome, RP_SUCCESS_END)
+                    RPSummaryRow("💵 درآمد", totalIncome, RP_SUCCESS_END)
                     Spacer(modifier = Modifier.height(8.dp))
-                    SummaryRow("💸 هزینه", totalExpense, RP_DANGER_END)
+                    RPSummaryRow("💸 هزینه", totalExpense, RP_DANGER_END)
                     Spacer(modifier = Modifier.height(8.dp))
                     HorizontalDivider(color = Color(0xFFE2EBF5))
                     Spacer(modifier = Modifier.height(8.dp))
-                    SummaryRow("💰 مانده", totalIncome - totalExpense, RP_INFO_END)
+                    RPSummaryRow("💰 مانده", totalIncome - totalExpense, RP_INFO_END)
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // ─── لیست تراکنش‌ها ───
+            // ─── تراکنش‌ها ───
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -562,6 +566,14 @@ fun ReportsScreen(
                             color = RP_TEXT
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "💡 برای ویرایش، روی هر تراکنش بزن",
+                        fontSize = 11.sp,
+                        color = RP_TEXT_LIGHT,
+                        textAlign = TextAlign.Right
+                    )
 
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -581,8 +593,15 @@ fun ReportsScreen(
                             )
                         }
                     } else {
-                        filteredTransactions.take(20).forEach { tx ->
-                            ReportTransactionRow(tx, accounts)
+                        filteredTransactions.take(50).forEach { tx ->
+                            RPTransactionRow(
+                                tx = tx,
+                                accounts = accounts,
+                                onClick = {
+                                    selectedTxForEdit = tx
+                                    showEditDialog = true
+                                }
+                            )
                             HorizontalDivider(
                                 color = Color(0xFFE2EBF5),
                                 modifier = Modifier.padding(vertical = 8.dp)
@@ -618,7 +637,6 @@ fun ReportsScreen(
                         textAlign = TextAlign.Right
                     )
                     HorizontalDivider(color = Color(0xFFE2EBF5))
-
                     accounts.forEach { acc ->
                         Text(
                             text = "💳 ${acc.name} (${acc.bank})",
@@ -753,13 +771,497 @@ fun ReportsScreen(
             containerColor = Color.White
         )
     }
+
+    // ─── دیالوگ ویرایش ───
+    if (showEditDialog && selectedTxForEdit != null) {
+        RPEditTransactionDialog(
+            tx = selectedTxForEdit!!,
+            accounts = accounts,
+            onDismiss = {
+                showEditDialog = false
+                selectedTxForEdit = null
+            },
+            onSave = { newType, newCategory, newAmount, newAccountId ->
+                scope.launch {
+                    try {
+                        val result = repo.updateTransactionFields(
+                            transactionId = selectedTxForEdit!!.id,
+                            newType = newType,
+                            newCategory = newCategory,
+                            newAmount = newAmount,
+                            newAccountId = newAccountId
+                        )
+                        if (result.isSuccess) {
+                            snackbarHostState.showSnackbar("✅ تراکنش ویرایش شد")
+                        } else {
+                            snackbarHostState.showSnackbar(
+                                "❌ ${result.exceptionOrNull()?.message}"
+                            )
+                        }
+                    } catch (e: Exception) {
+                        snackbarHostState.showSnackbar("❌ ${e.message}")
+                    }
+                    showEditDialog = false
+                    selectedTxForEdit = null
+                }
+            },
+            onDelete = {
+                txToDelete = selectedTxForEdit
+                showEditDialog = false
+                selectedTxForEdit = null
+                showDeleteDialog = true
+            }
+        )
+    }
+
+    // ─── دیالوگ تأیید حذف ───
+    if (showDeleteDialog && txToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            icon = { Text(text = "🗑️", fontSize = 40.sp) },
+            title = {
+                Text(
+                    "حذف تراکنش",
+                    fontWeight = FontWeight.Bold,
+                    color = RP_DANGER_END
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "آیا مطمئن هستید که می‌خواهید این تراکنش را حذف کنید؟",
+                        color = RP_TEXT,
+                        textAlign = TextAlign.Right
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "💰 ${formatMoneyRP(txToDelete!!.amount)}\n🏷️ ${txToDelete!!.category}",
+                        fontSize = 13.sp,
+                        color = RP_TEXT_LIGHT,
+                        textAlign = TextAlign.Right
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "⚠️ موجودی کارت هم برگردونده می‌شه",
+                        fontSize = 12.sp,
+                        color = RP_DANGER_END,
+                        textAlign = TextAlign.Right
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            try {
+                                val result = repo.deleteTransactionById(txToDelete!!.id)
+                                if (result.isSuccess) {
+                                    snackbarHostState.showSnackbar("✅ تراکنش حذف شد")
+                                } else {
+                                    snackbarHostState.showSnackbar(
+                                        "❌ ${result.exceptionOrNull()?.message}"
+                                    )
+                                }
+                            } catch (e: Exception) {
+                                snackbarHostState.showSnackbar("❌ ${e.message}")
+                            }
+                            showDeleteDialog = false
+                            txToDelete = null
+                        }
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = RP_DANGER_END)
+                ) {
+                    Text("🗑️ حذف", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showDeleteDialog = false },
+                    colors = ButtonDefaults.textButtonColors(contentColor = RP_TEXT_LIGHT)
+                ) {
+                    Text("❌ انصراف")
+                }
+            },
+            containerColor = Color.White
+        )
+    }
 }
 
 // ─────────────────────────────────────────
-// دکمه فیلتر
+// دیالوگ ویرایش تراکنش
+// ─────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RPEditTransactionDialog(
+    tx: Transaction,
+    accounts: List<Account>,
+    onDismiss: () -> Unit,
+    onSave: (type: String, category: String, amount: Double, accountId: Long) -> Unit,
+    onDelete: () -> Unit
+) {
+    var editType by remember { mutableStateOf(tx.type) }
+    var editCategory by remember { mutableStateOf(tx.category) }
+    var editAmount by remember {
+        mutableStateOf(formatNumberWithCommaRP(tx.amount.toLong().toString()))
+    }
+    var selectedAccount by remember {
+        mutableStateOf(accounts.find { it.id == tx.accountId } ?: accounts.firstOrNull())
+    }
+
+    var showCategoryMenu by remember { mutableStateOf(false) }
+    var showAccountMenu by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                "✏️ ویرایش تراکنش",
+                fontWeight = FontWeight.Bold,
+                color = RP_TEXT
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .fillMaxWidth()
+            ) {
+                Text(
+                    text = "تاریخ: ${toJalaliRP(tx.date)}",
+                    fontSize = 11.sp,
+                    color = RP_TEXT_LIGHT,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+
+                // ─── نوع ───
+                Text(
+                    "نوع:",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = RP_TEXT,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    RPTypeSelector(
+                        title = "💸 هزینه",
+                        isSelected = editType == "هزینه",
+                        startColor = RP_DANGER_START,
+                        endColor = RP_DANGER_END,
+                        modifier = Modifier.weight(1f),
+                        onClick = { editType = "هزینه" }
+                    )
+                    RPTypeSelector(
+                        title = "💵 درآمد",
+                        isSelected = editType == "درآمد",
+                        startColor = RP_SUCCESS_START,
+                        endColor = RP_SUCCESS_END,
+                        modifier = Modifier.weight(1f),
+                        onClick = { editType = "درآمد" }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // ─── دسته ───
+                Text(
+                    "دسته:",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = RP_TEXT,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showCategoryMenu = true },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F4F8))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = editCategory.ifEmpty { "انتخاب دسته" },
+                            fontSize = 14.sp,
+                            color = RP_TEXT,
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Right
+                        )
+                        Text(text = "▼", fontSize = 10.sp, color = RP_TEXT_LIGHT)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // ─── مبلغ ───
+                Text(
+                    "مبلغ (تومان):",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = RP_TEXT,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+                OutlinedTextField(
+                    value = editAmount,
+                    onValueChange = { input ->
+                        val digitsOnly = input.filter { it.isDigit() }
+                        editAmount = if (digitsOnly.isEmpty()) ""
+                        else formatNumberWithCommaRP(digitsOnly)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = RP_INFO_START,
+                        unfocusedBorderColor = Color(0xFFD0D7DE),
+                        focusedTextColor = RP_TEXT,
+                        unfocusedTextColor = RP_TEXT,
+                        cursorColor = RP_INFO_START
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // ─── کارت ───
+                Text(
+                    "کارت:",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = RP_TEXT,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showAccountMenu = true },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F4F8))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = selectedAccount?.let { "💳 ${it.name} (${it.bank})" }
+                                ?: "انتخاب کارت",
+                            fontSize = 13.sp,
+                            color = RP_TEXT,
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Right
+                        )
+                        Text(text = "▼", fontSize = 10.sp, color = RP_TEXT_LIGHT)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val amount = parseFormattedNumberRP(editAmount).toDoubleOrNull() ?: 0.0
+                    val account = selectedAccount ?: return@TextButton
+                    if (amount <= 0) return@TextButton
+
+                    onSave(
+                        editType,
+                        editCategory.ifEmpty { "سایر" },
+                        amount,
+                        account.id
+                    )
+                },
+                colors = ButtonDefaults.textButtonColors(contentColor = RP_SUCCESS_END)
+            ) {
+                Text("💾 ذخیره", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(
+                    onClick = onDelete,
+                    colors = ButtonDefaults.textButtonColors(contentColor = RP_DANGER_END)
+                ) {
+                    Text("🗑️")
+                }
+                TextButton(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.textButtonColors(contentColor = RP_TEXT_LIGHT)
+                ) {
+                    Text("❌")
+                }
+            }
+        },
+        containerColor = Color.White
+    )
+
+    // ─── منوی دسته ───
+    if (showCategoryMenu) {
+        RPCategoryPickerDialog(
+            currentCategories = if (editType == "هزینه") RP_EXPENSE_CATEGORIES
+            else RP_INCOME_CATEGORIES,
+            currentCategory = editCategory,
+            onSelect = { cat ->
+                editCategory = cat
+                showCategoryMenu = false
+            },
+            onDismiss = { showCategoryMenu = false }
+        )
+    }
+
+    // ─── منوی کارت ───
+    if (showAccountMenu) {
+        AlertDialog(
+            onDismissRequest = { showAccountMenu = false },
+            title = { Text("💳 انتخاب کارت", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    accounts.forEach { acc ->
+                        Text(
+                            text = "💳 ${acc.name} (${acc.bank})\n💰 ${formatMoneyRP(acc.balance)}",
+                            fontSize = 14.sp,
+                            color = if (selectedAccount?.id == acc.id) RP_INFO_END else RP_TEXT,
+                            fontWeight = if (selectedAccount?.id == acc.id) FontWeight.Bold else FontWeight.Normal,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedAccount = acc
+                                    showAccountMenu = false
+                                }
+                                .padding(vertical = 12.dp),
+                            textAlign = TextAlign.Right
+                        )
+                        HorizontalDivider(color = Color(0xFFE2EBF5))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAccountMenu = false }) {
+                    Text("بستن", color = RP_TEXT_LIGHT)
+                }
+            },
+            containerColor = Color.White
+        )
+    }
+}
+
+// ─────────────────────────────────────────
+// دیالوگ انتخاب دسته (با امکان دسته دلخواه)
+// ─────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RPCategoryPickerDialog(
+    currentCategories: List<String>,
+    currentCategory: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var customCategory by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("🏷️ انتخاب دسته", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .fillMaxWidth()
+            ) {
+                Text(
+                    text = "✍️ نوشتن دسته دلخواه:",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = RP_TEXT,
+                    modifier = Modifier.padding(bottom = 6.dp),
+                    textAlign = TextAlign.Right
+                )
+
+                OutlinedTextField(
+                    value = customCategory,
+                    onValueChange = { customCategory = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    singleLine = true,
+                    placeholder = {
+                        Text(
+                            "مثلاً: تعمیرات، ورزش، ...",
+                            color = RP_TEXT_LIGHT.copy(alpha = 0.5f),
+                            fontSize = 13.sp
+                        )
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = RP_INFO_START,
+                        unfocusedBorderColor = Color(0xFFD0D7DE),
+                        focusedTextColor = RP_TEXT,
+                        unfocusedTextColor = RP_TEXT,
+                        cursorColor = RP_INFO_START
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                TextButton(
+                    onClick = {
+                        if (customCategory.isNotBlank()) {
+                            onSelect(customCategory.trim())
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = RP_SUCCESS_END
+                    )
+                ) {
+                    Text("✅ تأیید دسته دلخواه", fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(color = Color(0xFFE2EBF5))
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "یا از لیست انتخاب کن:",
+                    fontSize = 12.sp,
+                    color = RP_TEXT_LIGHT,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                    textAlign = TextAlign.Right
+                )
+
+                currentCategories.forEach { cat ->
+                    Text(
+                        text = "• $cat",
+                        fontSize = 15.sp,
+                        color = if (currentCategory == cat) RP_INFO_END else RP_TEXT,
+                        fontWeight = if (currentCategory == cat) FontWeight.Bold else FontWeight.Normal,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(cat) }
+                            .padding(vertical = 10.dp),
+                        textAlign = TextAlign.Right
+                    )
+                    HorizontalDivider(color = Color(0xFFE2EBF5))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("بستن", color = RP_TEXT_LIGHT)
+            }
+        },
+        containerColor = Color.White
+    )
+}
+
+// ─────────────────────────────────────────
+// دکمه‌های کمکی
 // ─────────────────────────────────────────
 @Composable
-fun ReportFilterButton(
+fun RPFilterButton(
     icon: String,
     text: String,
     modifier: Modifier = Modifier,
@@ -794,7 +1296,7 @@ fun ReportFilterButton(
 }
 
 @Composable
-fun RangeButton(
+fun RPRangeButton(
     text: String,
     isSelected: Boolean,
     modifier: Modifier = Modifier,
@@ -825,7 +1327,40 @@ fun RangeButton(
 }
 
 @Composable
-fun SummaryRow(
+fun RPTypeSelector(
+    title: String,
+    isSelected: Boolean,
+    startColor: Color,
+    endColor: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = modifier
+            .height(44.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) startColor else Color(0xFFF0F4F8)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = title,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isSelected) Color.White else RP_TEXT
+            )
+        }
+    }
+}
+
+@Composable
+fun RPSummaryRow(
     label: String,
     value: Double,
     color: Color
@@ -846,10 +1381,10 @@ fun SummaryRow(
 }
 
 // ─────────────────────────────────────────
-// نمودار دایره‌ای (Donut)
+// نمودار Donut
 // ─────────────────────────────────────────
 @Composable
-fun DonutChart(
+fun RPDonutChart(
     data: List<Float>,
     colors: List<Color>,
     centerText: String
@@ -873,10 +1408,7 @@ fun DonutChart(
                     startAngle = startAngle,
                     sweepAngle = sweep,
                     useCenter = true,
-                    topLeft = Offset(
-                        center.x - radius,
-                        center.y - radius
-                    ),
+                    topLeft = Offset(center.x - radius, center.y - radius),
                     size = Size(radius * 2, radius * 2)
                 )
                 startAngle += sweep
@@ -889,20 +1421,14 @@ fun DonutChart(
             )
         }
 
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = centerText,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = RP_TEXT
             )
-            Text(
-                text = "تومان",
-                fontSize = 10.sp,
-                color = RP_TEXT_LIGHT
-            )
+            Text(text = "تومان", fontSize = 10.sp, color = RP_TEXT_LIGHT)
         }
     }
 }
@@ -911,9 +1437,10 @@ fun DonutChart(
 // ردیف تراکنش
 // ─────────────────────────────────────────
 @Composable
-fun ReportTransactionRow(
+fun RPTransactionRow(
     tx: Transaction,
-    accounts: List<Account>
+    accounts: List<Account>,
+    onClick: () -> Unit
 ) {
     val account = accounts.find { it.id == tx.accountId }
     val icon = when (tx.type) {
@@ -932,7 +1459,10 @@ fun ReportTransactionRow(
     }
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(text = icon, fontSize = 22.sp)
@@ -945,16 +1475,18 @@ fun ReportTransactionRow(
                 color = RP_TEXT
             )
             Text(
-                text = "${account?.name ?: "?"} • ${toJalali(tx.date)}",
+                text = "${account?.name ?: "?"} • ${toJalaliRP(tx.date)}",
                 fontSize = 11.sp,
                 color = RP_TEXT_LIGHT
             )
         }
         Text(
-            text = "${if (tx.type == "هزینه") "-" else "+"}${formatShortMoney(tx.amount)}",
+            text = "${if (tx.type == "هزینه") "-" else "+"}${formatShortMoneyRP(tx.amount)}",
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             color = color
         )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(text = "✏️", fontSize = 14.sp, color = RP_TEXT_LIGHT)
     }
 }

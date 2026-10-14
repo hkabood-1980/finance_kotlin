@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.map
 import com.hkaboodvand.finacemobile.data.db.entity.SmsMapping
 import com.hkaboodvand.finacemobile.data.db.entity.SmsQueue
 
+
 class FinanceRepository(private val db: AppDatabase) {
 
     private val accountDao = db.accountDao()
@@ -341,5 +342,171 @@ class FinanceRepository(private val db: AppDatabase) {
                 createdAt = now
             )
         )
+    }
+
+    // =====================================================
+    // ویرایش تراکنش (برای ReportsScreen)
+    // =====================================================
+
+    suspend fun getTransactionById(id: Long): Transaction? {
+        return txDao.getById(id)
+    }
+
+    /**
+     * ویرایش تراکنش: نوع، دسته، مبلغ، کارت
+     * ⚠️ موجودی کارت‌ها هم آپدیت می‌شه (تفاوت رو اعمال می‌کنه)
+     */
+    suspend fun updateTransactionFields(
+        transactionId: Long,
+        newType: String,
+        newCategory: String,
+        newAmount: Double,
+        newAccountId: Long
+    ): Result<Unit> {
+        return try {
+            val oldTx = txDao.getById(transactionId)
+                ?: return Result.failure(Exception("تراکنش پیدا نشد"))
+
+            val oldAmount = oldTx.amount
+            val oldType = oldTx.type
+            val oldAccountId = oldTx.accountId
+
+            // برگردوندن اثر تراکنش قدیمی روی موجودی
+            val oldAccount = accountDao.getById(oldAccountId)
+            if (oldAccount != null) {
+                val revertedBalance = when (oldType) {
+                    "درآمد" -> oldAccount.balance - oldAmount
+                    "هزینه", "پس‌انداز" -> oldAccount.balance + oldAmount
+                    else -> oldAccount.balance
+                }
+                accountDao.updateBalance(oldAccountId, revertedBalance)
+            }
+
+            // اعمال تراکنش جدید
+            val newAccount = accountDao.getById(newAccountId)
+                ?: return Result.failure(Exception("حساب جدید پیدا نشد"))
+
+            val currentNewBalance = newAccount.balance
+            val newBalance = when (newType) {
+                "درآمد" -> currentNewBalance + newAmount
+                "هزینه", "پس‌انداز" -> {
+                    if (currentNewBalance < newAmount) {
+                        // برگردون اثر قبلی
+                        if (oldAccount != null) {
+                            accountDao.updateBalance(oldAccountId, oldAccount.balance)
+                        }
+                        return Result.failure(Exception("موجودی کافی نیست"))
+                    }
+                    currentNewBalance - newAmount
+                }
+                else -> currentNewBalance
+            }
+
+            accountDao.updateBalance(newAccountId, newBalance)
+
+            // آپدیت تراکنش
+            txDao.update(
+                oldTx.copy(
+                    accountId = newAccountId,
+                    type = newType,
+                    category = newCategory,
+                    amount = newAmount,
+                    balanceAfter = newBalance
+                )
+            )
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteTransactionById(id: Long): Result<Unit> {
+        return try {
+            val tx = txDao.getById(id)
+                ?: return Result.failure(Exception("تراکنش پیدا نشد"))
+
+            // برگردوندن اثر روی موجودی
+            val account = accountDao.getById(tx.accountId)
+            if (account != null) {
+                val revertedBalance = when (tx.type) {
+                    "درآمد" -> account.balance - tx.amount
+                    "هزینه", "پس‌انداز" -> account.balance + tx.amount
+                    else -> account.balance
+                }
+                accountDao.updateBalance(tx.accountId, revertedBalance)
+            }
+
+            txDao.deleteById(id)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // =====================================================
+    // ویرایش پیامک (برای SmsScreen)
+    // =====================================================
+
+    /**
+     * آپدیت کامل پیامک (مبلغ، نوع، دسته، کارت)
+     */
+    suspend fun updateSmsFull(
+        smsId: Long,
+        newAmount: Double?,
+        newType: String?,
+        newCategory: String?,
+        newAccountId: Long?
+    ): Result<Unit> {
+        return try {
+            val sms = db.smsDao().getSmsById(smsId)
+                ?: return Result.failure(Exception("پیامک پیدا نشد"))
+
+            db.smsDao().updateSms(
+                sms.copy(
+                    parsedAmount = newAmount ?: sms.parsedAmount,
+                    parsedType = newType ?: sms.parsedType,
+                    accountId = newAccountId ?: sms.accountId
+                )
+            )
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * تأیید پیامک با مبلغ/نوع/دسته/کارت **ویرایش‌شده**
+     */
+    suspend fun approveSmsEdited(
+        smsId: Long,
+        accountId: Long,
+        category: String,
+        amount: Double,
+        type: String
+    ): Result<Long> {
+        return try {
+            val sms = db.smsDao().getSmsById(smsId)
+                ?: return Result.failure(Exception("پیامک پیدا نشد"))
+
+            // ثبت تراکنش با مقادیر ویرایش‌شده
+            val txResult = registerTransaction(
+                accountId = accountId,
+                type = type,
+                category = category,
+                amount = amount,
+                place = sms.sender,
+                description = sms.body.take(100)
+            )
+
+            if (txResult.isSuccess) {
+                db.smsDao().updateStatus(smsId, "approved", accountId)
+                Result.success(txResult.getOrThrow())
+            } else {
+                Result.failure(txResult.exceptionOrNull() ?: Exception("خطا در ثبت"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 }
