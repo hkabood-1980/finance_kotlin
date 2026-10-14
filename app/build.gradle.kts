@@ -74,6 +74,9 @@ dependencies {
     // Gson
     implementation(libs.gson)
 
+    // Persian Date
+    implementation(libs.persian.date.time)
+
     // Test
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

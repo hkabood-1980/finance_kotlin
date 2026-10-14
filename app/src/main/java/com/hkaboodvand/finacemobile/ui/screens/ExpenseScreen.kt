@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hkaboodvand.finacemobile.data.db.AppDatabase
 import com.hkaboodvand.finacemobile.data.db.entity.Account
+import com.hkaboodvand.finacemobile.data.prefs.AppPreferences
 import com.hkaboodvand.finacemobile.data.repository.FinanceRepository
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
@@ -96,6 +97,7 @@ fun ExpenseScreen(
 
     val db = remember { AppDatabase.getInstance(context) }
     val repo = remember { FinanceRepository(db) }
+    val prefs = remember { AppPreferences(context) }
 
     // لیست کارت‌ها
     var accounts by remember { mutableStateOf<List<Account>>(emptyList()) }
@@ -116,6 +118,11 @@ fun ExpenseScreen(
     var showAccountMenu by remember { mutableStateOf(false) }
     var showCategoryMenu by remember { mutableStateOf(false) }
 
+    // ID حساب پس‌انداز
+    var savingsAccountId by remember { mutableStateOf<Long?>(null) }
+    // State برای دیالوگ تأیید پس‌انداز
+    var showSavingsWarning by remember { mutableStateOf(false) }
+
     val snackbarHostState = remember { SnackbarHostState() }
 
     // بارگذاری کارت‌ها
@@ -125,6 +132,13 @@ fun ExpenseScreen(
             if (accounts.size == 1) {
                 selectedAccount = accounts.first()
             }
+        }
+    }
+
+    // بارگذاری savingsAccountId
+    LaunchedEffect(Unit) {
+        prefs.savingsAccountId.collect { id ->
+            savingsAccountId = id
         }
     }
 
@@ -157,10 +171,8 @@ fun ExpenseScreen(
         return isValid
     }
 
-    // ثبت هزینه
-    fun saveExpense() {
-        if (!validateAll()) return
-
+    // تابع داخلی برای ثبت هزینه (بدون تأیید)
+    fun performSaveExpense() {
         scope.launch {
             try {
                 val amountValue = parseFormattedNumberEX(amount).toDoubleOrNull() ?: 0.0
@@ -188,6 +200,21 @@ fun ExpenseScreen(
                 snackbarHostState.showSnackbar("❌ خطا: ${e.message}")
             }
         }
+    }
+
+    // تابع اصلی (با تأیید پس‌انداز)
+    fun saveExpense() {
+        if (!validateAll()) return
+
+        val account = selectedAccount ?: return
+
+        // اگه از حساب پس‌انداز خرج می‌کنه → تأیید بگیر
+        if (savingsAccountId != null && account.id == savingsAccountId) {
+            showSavingsWarning = true
+            return
+        }
+
+        performSaveExpense()
     }
 
     Scaffold(
@@ -413,7 +440,7 @@ fun ExpenseScreen(
                 Text("💳 انتخاب کارت", fontWeight = FontWeight.Bold, color = EX_TEXT)
             },
             text = {
-                Column {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     accounts.forEach { acc ->
                         Text(
                             text = "💳 ${acc.name} (${acc.bank})\n💰 ${formatMoneyEX(acc.balance)}",
@@ -526,6 +553,73 @@ fun ExpenseScreen(
                     colors = ButtonDefaults.textButtonColors(contentColor = EX_TEXT_LIGHT)
                 ) {
                     Text("❌ انصراف")
+                }
+            },
+            containerColor = Color.White
+        )
+    }
+
+    // ─── دیالوگ تأیید خرج از پس‌انداز ───
+    if (showSavingsWarning) {
+        AlertDialog(
+            onDismissRequest = { showSavingsWarning = false },
+            icon = {
+                Text(text = "⚠️", fontSize = 40.sp)
+            },
+            title = {
+                Text(
+                    "توجه!",
+                    fontWeight = FontWeight.Bold,
+                    color = EX_DANGER_END,
+                    fontSize = 20.sp
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "شما در حال خرج کردن از حساب پس‌انداز هستید!",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = EX_TEXT,
+                        textAlign = TextAlign.Right
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "حساب پس‌انداز: ${selectedAccount?.name}\nمبلغ: $amount تومان",
+                        fontSize = 13.sp,
+                        color = EX_TEXT_LIGHT,
+                        textAlign = TextAlign.Right
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "آیا مطمئن هستید که می‌خواهید از پس‌انداز خود خرج کنید؟",
+                        fontSize = 13.sp,
+                        color = EX_TEXT,
+                        textAlign = TextAlign.Right
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showSavingsWarning = false
+                        performSaveExpense()
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = EX_DANGER_END
+                    )
+                ) {
+                    Text("✅ بله، خرج کن", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showSavingsWarning = false },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = EX_SUCCESS_END
+                    )
+                ) {
+                    Text("❌ انصراف", fontWeight = FontWeight.Bold)
                 }
             },
             containerColor = Color.White

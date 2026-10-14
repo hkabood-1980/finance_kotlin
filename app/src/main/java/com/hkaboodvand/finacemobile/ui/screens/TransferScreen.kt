@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hkaboodvand.finacemobile.data.db.AppDatabase
 import com.hkaboodvand.finacemobile.data.db.entity.Account
+import com.hkaboodvand.finacemobile.data.prefs.AppPreferences
 import com.hkaboodvand.finacemobile.data.repository.FinanceRepository
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
@@ -83,6 +84,7 @@ fun TransferScreen(
 
     val db = remember { AppDatabase.getInstance(context) }
     val repo = remember { FinanceRepository(db) }
+    val prefs = remember { AppPreferences(context) }
 
     // لیست کارت‌ها
     var accounts by remember { mutableStateOf<List<Account>>(emptyList()) }
@@ -104,12 +106,24 @@ fun TransferScreen(
     var showSourceMenu by remember { mutableStateOf(false) }
     var showDestMenu by remember { mutableStateOf(false) }
 
+    // ID حساب پس‌انداز
+    var savingsAccountId by remember { mutableStateOf<Long?>(null) }
+    // State برای دیالوگ تأیید پس‌انداز
+    var showSavingsWarning by remember { mutableStateOf(false) }
+
     val snackbarHostState = remember { SnackbarHostState() }
 
     // بارگذاری کارت‌ها
     LaunchedEffect(Unit) {
         repo.getAllAccounts().collect { list ->
             accounts = list
+        }
+    }
+
+    // بارگذاری savingsAccountId
+    LaunchedEffect(Unit) {
+        prefs.savingsAccountId.collect { id ->
+            savingsAccountId = id
         }
     }
 
@@ -145,10 +159,8 @@ fun TransferScreen(
         return isValid
     }
 
-    // ثبت انتقال
-    fun saveTransfer() {
-        if (!validateAll()) return
-
+    // تابع داخلی برای ثبت انتقال (بدون تأیید)
+    fun performSaveTransfer() {
         scope.launch {
             try {
                 val amountValue = parseFormattedNumberTR(amount).toDoubleOrNull() ?: 0.0
@@ -175,6 +187,21 @@ fun TransferScreen(
                 snackbarHostState.showSnackbar("❌ خطا: ${e.message}")
             }
         }
+    }
+
+    // تابع اصلی (با تأیید پس‌انداز)
+    fun saveTransfer() {
+        if (!validateAll()) return
+
+        val source = sourceAccount ?: return
+
+        // اگه از حساب پس‌انداز خارج می‌شه → تأیید بگیر
+        if (savingsAccountId != null && source.id == savingsAccountId) {
+            showSavingsWarning = true
+            return
+        }
+
+        performSaveTransfer()
     }
 
     Scaffold(
@@ -471,6 +498,73 @@ fun TransferScreen(
             confirmButton = {
                 TextButton(onClick = { showDestMenu = false }) {
                     Text("بستن", color = TR_TEXT_LIGHT)
+                }
+            },
+            containerColor = Color.White
+        )
+    }
+
+    // ─── دیالوگ تأیید خرج از پس‌انداز ───
+    if (showSavingsWarning) {
+        AlertDialog(
+            onDismissRequest = { showSavingsWarning = false },
+            icon = {
+                Text(text = "⚠️", fontSize = 40.sp)
+            },
+            title = {
+                Text(
+                    "توجه!",
+                    fontWeight = FontWeight.Bold,
+                    color = TR_DANGER_END,
+                    fontSize = 20.sp
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "شما در حال انتقال از حساب پس‌انداز هستید!",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TR_TEXT,
+                        textAlign = TextAlign.Right
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "حساب پس‌انداز: ${sourceAccount?.name}\nمبلغ: $amount تومان",
+                        fontSize = 13.sp,
+                        color = TR_TEXT_LIGHT,
+                        textAlign = TextAlign.Right
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "آیا مطمئن هستید که می‌خواهید از پس‌انداز خود انتقال دهید؟",
+                        fontSize = 13.sp,
+                        color = TR_TEXT,
+                        textAlign = TextAlign.Right
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showSavingsWarning = false
+                        performSaveTransfer()
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = TR_DANGER_END
+                    )
+                ) {
+                    Text("✅ بله، انتقال بده", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showSavingsWarning = false },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = TR_SUCCESS_END
+                    )
+                ) {
+                    Text("❌ انصراف", fontWeight = FontWeight.Bold)
                 }
             },
             containerColor = Color.White

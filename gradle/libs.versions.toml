@@ -14,6 +14,7 @@ datastore = "1.1.1"
 gson = "2.11.0"
 navigationCompose = "2.8.4"
 lifecycleViewmodelCompose = "2.8.7"
+persianDateTime = "4.2.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -38,6 +39,7 @@ androidx-datastore-preferences = { group = "androidx.datastore", name = "datasto
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycleViewmodelCompose" }
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
+persian-date-time = { group = "com.github.mfathi91", name = "persian-date-time", version.ref = "persianDateTime" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
