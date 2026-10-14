@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.Flow
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.flow.map
 
 
 class FinanceRepository(private val db: AppDatabase) {
@@ -242,6 +243,16 @@ class FinanceRepository(private val db: AppDatabase) {
             }
         } catch (e: Exception) {
             false
+        }
+    }
+
+    /**
+     * مجموع موجودی‌های اولیه (تراکنش‌های با category = "موجودی اولیه")
+     */
+    fun getTotalInitialBalance(): Flow<Double> {
+        return txDao.getAll().map { list ->
+            list.filter { it.category == "موجودی اولیه" }
+                .sumOf { it.amount }
         }
     }
 }

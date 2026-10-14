@@ -86,7 +86,9 @@ fun HomeScreen(
     var totalExpense by remember { mutableStateOf(0.0) }
     var accountsCount by remember { mutableStateOf(0) }
     var totalBalance by remember { mutableStateOf(0.0) }
+    var initialBalance by remember { mutableStateOf(0.0) }
     var isDarkMode by remember { mutableStateOf(false) }
+
 
     LaunchedEffect(Unit) {
         scope.launch {
@@ -101,8 +103,12 @@ fun HomeScreen(
                 totalBalance = accounts.sumOf { it.balance }
             }
         }
+        scope.launch {
+            repo.getTotalInitialBalance().collect { initial ->
+                initialBalance = initial
+            }
+        }
     }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -145,7 +151,7 @@ fun HomeScreen(
                 StatCard(
                     icon = "💵",
                     title = "درآمد کل",
-                    value = totalIncome,
+                    value = totalIncome - initialBalance,
                     startColor = COLOR_SUCCESS_START,
                     endColor = COLOR_SUCCESS_END,
                     modifier = Modifier.weight(1f)
