@@ -9,7 +9,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.flow.map
-
+import com.hkaboodvand.finacemobile.data.db.entity.SmsMapping
+import com.hkaboodvand.finacemobile.data.db.entity.SmsQueue
 
 class FinanceRepository(private val db: AppDatabase) {
 
@@ -254,5 +255,91 @@ class FinanceRepository(private val db: AppDatabase) {
             list.filter { it.category == "موجودی اولیه" }
                 .sumOf { it.amount }
         }
+    }
+
+    // =====================================================
+    // SMS Queue
+    // =====================================================
+
+    fun getPendingSms(): Flow<List<SmsQueue>> = db.smsDao().getPending()
+
+    fun getPendingSmsCount(): Flow<Int> = db.smsDao().getPendingCount()
+
+    suspend fun getSmsById(id: Long): SmsQueue? = db.smsDao().getSmsById(id)
+
+    suspend fun approveSms(smsId: Long, accountId: Long): Result<Long> {
+        return try {
+            val sms = db.smsDao().getSmsById(smsId)
+                ?: return Result.failure(Exception("پیامک پیدا نشد"))
+
+            val amount = sms.parsedAmount
+                ?: return Result.failure(Exception("مبلغ پیامک نامشخص است"))
+            val type = sms.parsedType
+                ?: return Result.failure(Exception("نوع پیامک نامشخص است"))
+
+            // ثبت تراکنش
+            val txResult = registerTransaction(
+                accountId = accountId,
+                type = type,
+                category = "پیامک بانکی",
+                amount = amount,
+                place = sms.sender,
+                description = sms.body.take(100)
+            )
+
+            if (txResult.isSuccess) {
+                // آپدیت وضعیت پیامک
+                db.smsDao().updateStatus(smsId, "approved", accountId)
+                Result.success(txResult.getOrThrow())
+            } else {
+                Result.failure(txResult.exceptionOrNull() ?: Exception("خطا در ثبت"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteSms(smsId: Long) = db.smsDao().deleteSms(smsId)
+
+    // =====================================================
+    // SMS Mapping (یادگیری)
+    // =====================================================
+
+    fun getAllSmsMappings(): Flow<List<SmsMapping>> = db.smsDao().getAllMappings()
+
+    suspend fun addSmsMapping(mapping: SmsMapping): Long {
+        return db.smsDao().insertMapping(mapping)
+    }
+
+    suspend fun deleteSmsMapping(id: Long) = db.smsDao().deleteMapping(id)
+
+    suspend fun deleteAllSmsMappings() = db.smsDao().deleteAllMappings()
+
+    suspend fun getMappingByAccountNumber(accountNumber: String): SmsMapping? {
+        return db.smsDao().getMappingByAccountNumber(accountNumber)
+    }
+
+    /**
+     * وقتی کاربر پیامک رو به یه حساب وصل می‌کنه،
+     * یه رکورد توی SmsMapping ذخیره می‌کنه برای یادگیری
+     */
+    suspend fun learnSmsMapping(
+        sender: String,
+        cardLast4: String,
+        accountId: Long,
+        bankName: String = ""
+    ): Long {
+        val now = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+            .format(Date())
+        return db.smsDao().insertMapping(
+            SmsMapping(
+                accountNumber = sender,
+                cardLast4 = cardLast4,
+                accountId = accountId,
+                bankName = bankName,
+                autoApprove = true,
+                createdAt = now
+            )
+        )
     }
 }
