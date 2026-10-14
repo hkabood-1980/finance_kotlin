@@ -75,9 +75,11 @@ val AC_TEXT_LIGHT = Color(0xFF64748B)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddCardScreen(
+    accountId: Long? = null,   // ← اگه مقدار داشته باشه، حالت ویرایش
     onBack: () -> Unit,
     onSaved: () -> Unit
 ) {
+
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -97,6 +99,21 @@ fun AddCardScreen(
     var cardError by remember { mutableStateOf("") }
     var balanceError by remember { mutableStateOf("") }
 
+    // اگه حالت ویرایشه، اطلاعات کارت رو لود کن
+    LaunchedEffect(accountId) {
+        if (accountId != null) {
+            val account = repo.getAccountById(accountId)
+            if (account != null) {
+                name = account.name
+                bank = account.bank
+                cardNumber = account.cardNumber
+                accountType = account.type.ifEmpty { "جاری" }
+                balance = if (account.balance > 0) {
+                    formatNumberWithComma(account.balance.toLong().toString())
+                } else ""
+            }
+        }
+    }
     // Snackbar
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -140,41 +157,74 @@ fun AddCardScreen(
     }
 
     // ذخیره‌ی کارت
+
     fun saveCard() {
         if (!validateAll()) return
 
         scope.launch {
             try {
                 val balanceValue = parseFormattedNumber(balance).toDoubleOrNull() ?: 0.0
-                val now = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-                    .format(Date())
 
-                // ۱. ذخیره‌ی کارت
-                val accountId = repo.addAccount(
-                    Account(
-                        name = name.trim(),
-                        bank = bank.trim(),
-                        cardNumber = cardNumber.trim(),
-                        balance = 0.0,   // ← اول صفر
-                        type = accountType
+                if (accountId == null) {
+                    // ─── حالت ثبت جدید ───
+                    val newAccountId = repo.addAccount(
+                        Account(
+                            name = name.trim(),
+                            bank = bank.trim(),
+                            cardNumber = cardNumber.trim(),
+                            balance = 0.0,
+                            type = accountType
+                        )
                     )
-                )
 
-                // ۲. اگه موجودی اولیه > 0، یه تراکنش درآمد ثبت کن
-                if (balanceValue > 0) {
-                    repo.registerTransaction(
-                        accountId = accountId,
-                        type = "درآمد",
-                        category = "موجودی اولیه",
-                        amount = balanceValue,
-                        place = bank.trim(),
-                        description = "موجودی اولیه کارت «${name.trim()}»"
+                    if (balanceValue > 0) {
+                        repo.registerTransaction(
+                            accountId = newAccountId,
+                            type = "درآمد",
+                            category = "موجودی اولیه",
+                            amount = balanceValue,
+                            place = bank.trim(),
+                            description = "موجودی اولیه کارت «${name.trim()}»"
+                        )
+                    }
+
+                    snackbarHostState.showSnackbar("✅ کارت با موفقیت ثبت شد")
+                } else {
+                    // ─── حالت ویرایش ───
+                    val oldAccount = repo.getAccountById(accountId)
+                    if (oldAccount == null) {
+                        snackbarHostState.showSnackbar("❌ کارت پیدا نشد")
+                        return@launch
+                    }
+
+                    val oldBalance = oldAccount.balance
+
+                    // آپدیت اطلاعات کارت
+                    repo.updateAccount(
+                        Account(
+                            id = accountId,
+                            name = name.trim(),
+                            bank = bank.trim(),
+                            cardNumber = cardNumber.trim(),
+                            balance = oldBalance,
+                            type = accountType
+                        )
                     )
-                    // توجه: registerTransaction موجودی رو دوباره اضافه می‌کنه
-                    // پس باید موجودی رو صفر بذاریم قبلش یا از insert مستقیم استفاده کنیم
+
+                    // اگه موجودی عوض شده، تراکنش «موجودی اولیه» رو آپدیت کن
+                    if (balanceValue != oldBalance) {
+                        repo.updateInitialBalanceTransaction(
+                            accountId = accountId,
+                            newBalance = balanceValue,
+                            oldBalance = oldBalance,
+                            bankName = bank.trim(),
+                            cardName = name.trim()
+                        )
+                    }
+
+                    snackbarHostState.showSnackbar("✅ کارت با موفقیت ویرایش شد")
                 }
 
-                snackbarHostState.showSnackbar("✅ کارت با موفقیت ثبت شد")
                 kotlinx.coroutines.delay(800)
                 onSaved()
             } catch (e: Exception) {
@@ -182,17 +232,17 @@ fun AddCardScreen(
             }
         }
     }
-
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        "➕ ثبت کارت بانکی",
+                        if (accountId == null) "➕ ثبت کارت بانکی" else "✏️ ویرایش کارت",
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                 },
+
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(

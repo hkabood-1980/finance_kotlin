@@ -9,6 +9,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+
 class FinanceRepository(private val db: AppDatabase) {
 
     private val accountDao = db.accountDao()
@@ -166,6 +167,81 @@ class FinanceRepository(private val db: AppDatabase) {
             Result.success(1L)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    /**
+     * آپدیت تراکنش «موجودی اولیه» وقتی کاربر موجودی کارت رو ویرایش می‌کنه
+     * - اگه تراکنش موجودی اولیه وجود داشت → آپدیتش کن
+     * - اگه وجود نداشت → یکی بساز
+     */
+    suspend fun updateInitialBalanceTransaction(
+        accountId: Long,
+        newBalance: Double,
+        oldBalance: Double,
+        bankName: String,
+        cardName: String
+    ): Result<Unit> {
+        return try {
+            val account = accountDao.getById(accountId)
+                ?: return Result.failure(Exception("حساب پیدا نشد"))
+
+            // ۱. آپدیت موجودی کارت
+            accountDao.updateBalance(accountId, newBalance)
+
+            // ۲. پیدا کردن تراکنش «موجودی اولیه» این کارت
+            val allTransactions = txDao.getAllOnce()
+            val initialTx = allTransactions.find {
+                it.accountId == accountId && it.category == "موجودی اولیه"
+            }
+
+            if (initialTx != null) {
+                // آپدیت تراکنش موجود
+                txDao.update(
+                    initialTx.copy(
+                        amount = newBalance,
+                        balanceAfter = newBalance,
+                        place = bankName,
+                        description = "موجودی اولیه کارت «$cardName»"
+                    )
+                )
+            } else if (newBalance > 0) {
+                // ساخت تراکنش جدید
+                val date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+                    .format(Date())
+                txDao.insert(
+                    Transaction(
+                        accountId = accountId,
+                        date = date,
+                        type = "درآمد",
+                        category = "موجودی اولیه",
+                        amount = newBalance,
+                        place = bankName,
+                        description = "موجودی اولیه کارت «$cardName»",
+                        balanceAfter = newBalance
+                    )
+                )
+            }
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * چک می‌کنه که آیا حساب تراکنش داره یا نه
+     * برای جلوگیری از حذف کارتی که تراکنش داره
+     */
+    suspend fun hasTransactions(accountId: Long): Boolean {
+        return try {
+            val all = txDao.getAllOnce()
+            // تراکنش‌های «موجودی اولیه» رو نادیده بگیر
+            all.any {
+                it.accountId == accountId && it.category != "موجودی اولیه"
+            }
+        } catch (e: Exception) {
+            false
         }
     }
 }
