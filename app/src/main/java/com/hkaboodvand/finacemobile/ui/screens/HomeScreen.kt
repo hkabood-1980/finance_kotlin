@@ -186,7 +186,7 @@ fun HomeScreen(
             BalanceCard(
                 icon = "💰",
                 title = "موجودی کل",
-                value = (totalIncome + initialBalance) - totalExpense,
+                value = totalBalance,
                 startColor = COLOR_INFO_START,
                 endColor = COLOR_INFO_END,
                 isLarge = true
