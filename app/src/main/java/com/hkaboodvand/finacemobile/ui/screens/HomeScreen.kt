@@ -32,6 +32,7 @@ import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
 
+
 // ─────────────────────────────────────────
 // رنگ‌ها
 // ─────────────────────────────────────────
@@ -64,6 +65,7 @@ val COLOR_INDIGO_END = Color(0xFF6E72CC)
 
 val COLOR_GRAY_START = Color(0xFF647191)
 val COLOR_GRAY_END = Color(0xFF7A8899)
+
 
 // تابع کمکی برای نمایش پول با کاما
 fun formatMoney(value: Double): String {
@@ -303,27 +305,16 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             // ─── ردیف ۵ (پشتیبان‌گیری) ───
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                MenuButton(
-                    icon = "💾",
-                    title = "پشتیبان‌گیری",
-                    startColor = COLOR_INDIGO_START,
-                    endColor = COLOR_INDIGO_END,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onNavigate("backup") }
-                )
-                MenuButton(
-                    icon = "🔍",
-                    title = "جستجو",
-                    startColor = COLOR_GRAY_START,
-                    endColor = COLOR_GRAY_END,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onNavigate("search") }
-                )
-            }
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ─── دکمه پشتیبان‌گیری (مستطیلی پهن) ───
+            FullWidthBackupButton(
+                icon = "💾",
+                title = "پشتیبان‌گیری",
+                startColor = COLOR_INDIGO_START,
+                endColor = COLOR_INDIGO_END,
+                onClick = { onNavigate("backup") }
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
         }
@@ -503,3 +494,61 @@ fun MenuButton(
         }
     }
 }
+@Composable
+fun FullWidthBackupButton(
+        icon: String,
+        title: String,
+        startColor: Color,
+        endColor: Color,
+        onClick: () -> Unit
+) {
+        val interactionSource = remember { MutableInteractionSource() }
+        val isPressed by interactionSource.collectIsPressedAsState()
+
+        val scale by animateFloatAsState(
+            targetValue = if (isPressed) 0.97f else 1f,
+            animationSpec = tween(100),
+            label = "scale"
+        )
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(70.dp)
+                .scale(scale)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick
+                ),
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+            elevation = CardDefaults.cardElevation(
+                defaultElevation = if (isPressed) 2.dp else 6.dp
+            )
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.linearGradient(colors = listOf(startColor, endColor))
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(text = icon, fontSize = 26.sp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = title,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+        }
+ }

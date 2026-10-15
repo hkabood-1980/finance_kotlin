@@ -2,20 +2,21 @@ package com.hkaboodvand.finacemobile.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.NavType
-import androidx.navigation.navArgument
 import androidx.navigation.compose.rememberNavController
-import com.hkaboodvand.finacemobile.ui.screens.HomeScreen
+import androidx.navigation.navArgument
 import com.hkaboodvand.finacemobile.ui.screens.AddCardScreen
+import com.hkaboodvand.finacemobile.ui.screens.BackupScreen
 import com.hkaboodvand.finacemobile.ui.screens.CardListScreen
-import com.hkaboodvand.finacemobile.ui.screens.IncomeScreen
 import com.hkaboodvand.finacemobile.ui.screens.ExpenseScreen
-import com.hkaboodvand.finacemobile.ui.screens.TransferScreen
-import com.hkaboodvand.finacemobile.ui.screens.SavingScreen
+import com.hkaboodvand.finacemobile.ui.screens.HomeScreen
+import com.hkaboodvand.finacemobile.ui.screens.IncomeScreen
 import com.hkaboodvand.finacemobile.ui.screens.ReportsScreen
+import com.hkaboodvand.finacemobile.ui.screens.SavingScreen
 import com.hkaboodvand.finacemobile.ui.screens.SmsScreen
+import com.hkaboodvand.finacemobile.ui.screens.TransferScreen
 
 object Routes {
     const val HOME = "home"
@@ -27,6 +28,7 @@ object Routes {
     const val SAVING = "saving"
     const val REPORTS = "reports"
     const val SMS = "sms"
+    const val BACKUP = "backup"
 }
 
 @Composable
@@ -50,24 +52,25 @@ fun AppNavigation(
                 }
             )
         }
+
         composable(
-                route = "edit_card/{accountId}",
-                arguments = listOf(
-                    navArgument("accountId") { type = NavType.LongType }
-                )
-            ) { backStackEntry ->
-                val accountId = backStackEntry.arguments?.getLong("accountId")
-                AddCardScreen(
-                    accountId = accountId,
-                    onBack = { navController.popBackStack() },
-                    onSaved = {
-                        navController.popBackStack(
-                            route = Routes.CARD_LIST,
-                            inclusive = false
-                        )
-                    }
-                )
-            }
+            route = "edit_card/{accountId}",
+            arguments = listOf(
+                navArgument("accountId") { type = NavType.LongType }
+            )
+        ) { backStackEntry ->
+            val accountId = backStackEntry.arguments?.getLong("accountId")
+            AddCardScreen(
+                accountId = accountId,
+                onBack = { navController.popBackStack() },
+                onSaved = {
+                    navController.popBackStack(
+                        route = Routes.CARD_LIST,
+                        inclusive = false
+                    )
+                }
+            )
+        }
 
         composable(Routes.ADD_CARD) {
             AddCardScreen(
@@ -107,6 +110,10 @@ fun AppNavigation(
 
         composable(Routes.SMS) {
             SmsScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.BACKUP) {
+            BackupScreen(onBack = { navController.popBackStack() })
         }
     }
 }

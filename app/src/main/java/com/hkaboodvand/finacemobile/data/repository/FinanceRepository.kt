@@ -509,4 +509,55 @@ class FinanceRepository(private val db: AppDatabase) {
             Result.failure(e)
         }
     }
+
+    // =====================================================
+    // پشتیبان‌گیری (Backup & Restore)
+    // =====================================================
+
+    suspend fun getAllAccountsOnce(): List<Account> = accountDao.getAllOnce()
+
+    suspend fun getAllTransactionsOnce(): List<Transaction> = txDao.getAllOnce()
+
+    /**
+     * بازیابی از فایل پشتیبان
+     * ۱. همه‌ی داده‌های قبلی حذف می‌شن
+     * ۲. داده‌های جدید اضافه می‌شن
+     */
+    suspend fun restoreBackup(
+        accounts: List<Account>,
+        transactions: List<Transaction>
+    ): Result<Unit> {
+        return try {
+            // ۱. حذف همه
+            txDao.deleteAll()
+            accountDao.deleteAll()
+
+            // ۲. اضافه کردن حساب‌ها
+            accounts.forEach { account ->
+                accountDao.insert(account.copy(id = 0))
+            }
+
+            // ۳. اضافه کردن تراکنش‌ها
+            transactions.forEach { tx ->
+                txDao.insert(tx.copy(id = 0))
+            }
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * پاک کردن همه‌ی داده‌ها
+     */
+    suspend fun deleteAllData(): Result<Unit> {
+        return try {
+            txDao.deleteAll()
+            accountDao.deleteAll()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
