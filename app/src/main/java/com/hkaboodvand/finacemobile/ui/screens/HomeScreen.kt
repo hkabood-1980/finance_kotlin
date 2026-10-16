@@ -211,7 +211,7 @@ fun HomeScreen(
             ) {
                 MenuButton(
                     icon = "➕",
-                    title = "ثبت کارت",
+                    title = "ثبت حساب",
                     startColor = COLOR_SUCCESS_START,
                     endColor = COLOR_SUCCESS_END,
                     modifier = Modifier.weight(1f),
@@ -219,7 +219,7 @@ fun HomeScreen(
                 )
                 MenuButton(
                     icon = "💳",
-                    title = "نمایش کارت‌ها",
+                    title = "نمایش حساب ها",
                     startColor = COLOR_PRIMARY_START,
                     endColor = COLOR_PRIMARY_END,
                     modifier = Modifier.weight(1f),
@@ -322,7 +322,7 @@ fun HomeScreen(
 }
 
 // ─────────────────────────────────────────
-// کارت آمار
+// حساب آمار
 // ─────────────────────────────────────────
 @Composable
 fun StatCard(
@@ -374,7 +374,7 @@ fun StatCard(
 }
 
 // ─────────────────────────────────────────
-// کارت موجودی کل
+// حساب موجودی کل
 // ─────────────────────────────────────────
 @Composable
 fun BalanceCard(

@@ -21,21 +21,19 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hkaboodvand.finacemobile.data.db.AppDatabase
 import com.hkaboodvand.finacemobile.data.db.entity.Account
-import com.hkaboodvand.finacemobile.data.db.entity.Transaction
 import com.hkaboodvand.finacemobile.data.repository.FinanceRepository
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.text.NumberFormat
-
+import java.util.Locale
 
 // ─────────────────────────────────────────
 // رنگ‌های ملایم
@@ -50,36 +48,32 @@ val AC_BG = Color(0xFFF0F4F8)
 val AC_TEXT = Color(0xFF1E293B)
 val AC_TEXT_LIGHT = Color(0xFF64748B)
 
-    // ─────────────────────────────────────────
+// ─────────────────────────────────────────
 // توابع کمکی برای فرمت اعداد
 // ─────────────────────────────────────────
-
-// فرمت‌دهی خودکار اعداد با کاما (برای نمایش)
-    fun formatNumberWithComma(input: String): String {
-        if (input.isEmpty()) return ""
-        val digitsOnly = input.filter { it.isDigit() }
-        if (digitsOnly.isEmpty()) return ""
-        return try {
-            val number = digitsOnly.toLong()
-            NumberFormat.getNumberInstance(Locale.US).format(number)
-        } catch (e: Exception) {
-            digitsOnly
-        }
+fun formatNumberWithComma(input: String): String {
+    if (input.isEmpty()) return ""
+    val digitsOnly = input.filter { it.isDigit() }
+    if (digitsOnly.isEmpty()) return ""
+    return try {
+        val number = digitsOnly.toLong()
+        NumberFormat.getNumberInstance(Locale.US).format(number)
+    } catch (e: Exception) {
+        digitsOnly
     }
+}
 
-// حذف کاما (برای ذخیره در دیتابیس)
-    fun parseFormattedNumber(input: String): String {
-        return input.filter { it.isDigit() }
-    }
+fun parseFormattedNumber(input: String): String {
+    return input.filter { it.isDigit() }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddCardScreen(
-    accountId: Long? = null,   // ← اگه مقدار داشته باشه، حالت ویرایش
+    accountId: Long? = null,
     onBack: () -> Unit,
     onSaved: () -> Unit
 ) {
-
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -91,7 +85,9 @@ fun AddCardScreen(
     var bank by remember { mutableStateOf("") }
     var cardNumber by remember { mutableStateOf("") }
     var accountType by remember { mutableStateOf("جاری") }
-    var balance by remember { mutableStateOf("") }
+
+    // ─── موجودی با TextFieldValue (رفع باگ کاما) ───
+    var balanceTFV by remember { mutableStateOf(TextFieldValue("")) }
 
     // خطاها
     var nameError by remember { mutableStateOf("") }
@@ -99,7 +95,7 @@ fun AddCardScreen(
     var cardError by remember { mutableStateOf("") }
     var balanceError by remember { mutableStateOf("") }
 
-    // اگه حالت ویرایشه، اطلاعات کارت رو لود کن
+    // اگه حالت ویرایشه، اطلاعات حساب رو لود کن
     LaunchedEffect(accountId) {
         if (accountId != null) {
             val account = repo.getAccountById(accountId)
@@ -108,22 +104,28 @@ fun AddCardScreen(
                 bank = account.bank
                 cardNumber = account.cardNumber
                 accountType = account.type.ifEmpty { "جاری" }
-                balance = if (account.balance > 0) {
+                val formatted = if (account.balance > 0) {
                     formatNumberWithComma(account.balance.toLong().toString())
                 } else ""
+                balanceTFV = TextFieldValue(
+                    text = formatted,
+                    selection = TextRange(formatted.length)
+                )
             }
         }
     }
+
     // Snackbar
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // اعتبارسنجی شماره کارت
+    // اعتبارسنجی شماره حساب (۴ تا ۲۴ رقم)
     fun validateCardNumber(input: String): String {
         val trimmed = input.trim()
-        if (trimmed.isEmpty()) return "شماره کارت را وارد کنید"
+        if (trimmed.isEmpty()) return "شماره حساب را وارد کنید"
         if (!trimmed.all { it.isDigit() }) return "فقط عدد وارد کنید"
-        if (trimmed.length == 4 || trimmed.length == 16) return ""
-        return "باید ۴ رقم آخر یا ۱۶ رقم کامل باشد"
+        if (trimmed.length < 4) return "حداقل ۴ رقم وارد کنید"
+        if (trimmed.length > 24) return "حداکثر ۲۴ رقم مجاز است"
+        return ""
     }
 
     // اعتبارسنجی کل فرم
@@ -131,7 +133,7 @@ fun AddCardScreen(
         var isValid = true
 
         if (name.isBlank()) {
-            nameError = "نام کارت را وارد کنید"
+            nameError = "نام حساب را وارد کنید"
             isValid = false
         } else nameError = ""
 
@@ -144,8 +146,8 @@ fun AddCardScreen(
         cardError = cardErr
         if (cardErr.isNotEmpty()) isValid = false
 
-        val balanceValue = parseFormattedNumber(balance).toDoubleOrNull()
-        if (balance.isBlank()) {
+        val balanceValue = parseFormattedNumber(balanceTFV.text).toDoubleOrNull()
+        if (balanceTFV.text.isBlank()) {
             balanceError = "موجودی اولیه را وارد کنید"
             isValid = false
         } else if (balanceValue == null || balanceValue < 0) {
@@ -156,14 +158,13 @@ fun AddCardScreen(
         return isValid
     }
 
-    // ذخیره‌ی کارت
-
+    // ذخیره‌ی حساب
     fun saveCard() {
         if (!validateAll()) return
 
         scope.launch {
             try {
-                val balanceValue = parseFormattedNumber(balance).toDoubleOrNull() ?: 0.0
+                val balanceValue = parseFormattedNumber(balanceTFV.text).toDoubleOrNull() ?: 0.0
 
                 if (accountId == null) {
                     // ─── حالت ثبت جدید ───
@@ -184,22 +185,21 @@ fun AddCardScreen(
                             category = "موجودی اولیه",
                             amount = balanceValue,
                             place = bank.trim(),
-                            description = "موجودی اولیه کارت «${name.trim()}»"
+                            description = "موجودی اولیه حساب «${name.trim()}»"
                         )
                     }
 
-                    snackbarHostState.showSnackbar("✅ کارت با موفقیت ثبت شد")
+                    snackbarHostState.showSnackbar("✅ حساب با موفقیت ثبت شد")
                 } else {
                     // ─── حالت ویرایش ───
                     val oldAccount = repo.getAccountById(accountId)
                     if (oldAccount == null) {
-                        snackbarHostState.showSnackbar("❌ کارت پیدا نشد")
+                        snackbarHostState.showSnackbar("❌ حساب پیدا نشد")
                         return@launch
                     }
 
                     val oldBalance = oldAccount.balance
 
-                    // آپدیت اطلاعات کارت
                     repo.updateAccount(
                         Account(
                             id = accountId,
@@ -211,7 +211,6 @@ fun AddCardScreen(
                         )
                     )
 
-                    // اگه موجودی عوض شده، تراکنش «موجودی اولیه» رو آپدیت کن
                     if (balanceValue != oldBalance) {
                         repo.updateInitialBalanceTransaction(
                             accountId = accountId,
@@ -222,7 +221,7 @@ fun AddCardScreen(
                         )
                     }
 
-                    snackbarHostState.showSnackbar("✅ کارت با موفقیت ویرایش شد")
+                    snackbarHostState.showSnackbar("✅ حساب با موفقیت ویرایش شد")
                 }
 
                 kotlinx.coroutines.delay(800)
@@ -232,17 +231,17 @@ fun AddCardScreen(
             }
         }
     }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        if (accountId == null) "➕ ثبت کارت بانکی" else "✏️ ویرایش کارت",
+                        if (accountId == null) "➕ ثبت حساب بانکی" else "✏️ ویرایش حساب",
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                 },
-
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -268,12 +267,11 @@ fun AddCardScreen(
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-
             Spacer(modifier = Modifier.height(8.dp))
 
-            // ─── نام کارت ───
+            // ─── نام حساب ───
             CardInputField(
-                label = "نام کارت *",
+                label = "نام حساب *",
                 value = name,
                 onValueChange = {
                     name = it
@@ -301,20 +299,19 @@ fun AddCardScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // ─── شماره کارت ───
+            // ─── شماره حساب (۴ تا ۲۴ رقم) ───
             CardInputField(
-                label = "شماره کارت *",
+                label = "شماره حساب *",
                 value = cardNumber,
-                onValueChange = {
-                    // فقط عدد قبول کن، حداکثر ۱۶ رقم
-                    val filtered = it.filter { ch -> ch.isDigit() }.take(16)
+                onValueChange = { input ->
+                    val filtered = input.filter { ch -> ch.isDigit() }.take(24)
                     cardNumber = filtered
                     if (cardError.isNotEmpty()) cardError = ""
                 },
-                placeholder = "۴ رقم آخر یا ۱۶ رقم",
+                placeholder = "۴ تا ۲۴ رقم",
                 error = cardError,
                 keyboardType = KeyboardType.Number,
-                helperText = "💡 ۴ رقم آخر کارت یا ۱۶ رقم کامل را وارد کنید"
+                helperText = "💡 حداقل ۴ رقم، حداکثر ۲۴ رقم"
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -355,13 +352,18 @@ fun AddCardScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // ─── موجودی اولیه ───
-            CardInputField(
+            // ─── موجودی اولیه (با TextFieldValue) ───
+            CardInputFieldWithTFV(
                 label = "موجودی اولیه *",
-                value = balance,
-                onValueChange = { input ->
-                    val digitsOnly = input.filter { it.isDigit() }
-                    balance = if (digitsOnly.isEmpty()) "" else formatNumberWithComma(digitsOnly)
+                value = balanceTFV,
+                onValueChange = { newValue ->
+                    val digitsOnly = newValue.text.filter { it.isDigit() }
+                    val formatted = if (digitsOnly.isEmpty()) ""
+                    else formatNumberWithComma(digitsOnly)
+                    balanceTFV = TextFieldValue(
+                        text = formatted,
+                        selection = TextRange(formatted.length)
+                    )
                     if (balanceError.isNotEmpty()) balanceError = ""
                 },
                 placeholder = "0",
@@ -401,7 +403,7 @@ fun AddCardScreen(
 }
 
 // ─────────────────────────────────────────
-// فیلد ورودی با گرادیان و اعتبارسنجی
+// فیلد ورودی معمولی (String)
 // ─────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -414,9 +416,78 @@ fun CardInputField(
     keyboardType: KeyboardType = KeyboardType.Text,
     helperText: String = ""
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = AC_TEXT,
+            modifier = Modifier.padding(bottom = 6.dp),
+            textAlign = TextAlign.Right
+        )
+
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = {
+                Text(placeholder, color = AC_TEXT_LIGHT.copy(alpha = 0.5f))
+            },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            singleLine = true,
+            isError = error.isNotEmpty(),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = AC_PRIMARY_START,
+                unfocusedBorderColor = Color(0xFFD0D7DE),
+                focusedContainerColor = Color.White,
+                unfocusedContainerColor = Color.White,
+                errorBorderColor = AC_DANGER_START,
+                errorContainerColor = Color.White,
+                focusedTextColor = AC_TEXT,
+                unfocusedTextColor = AC_TEXT,
+                focusedPlaceholderColor = AC_TEXT_LIGHT.copy(alpha = 0.5f),
+                unfocusedPlaceholderColor = AC_TEXT_LIGHT.copy(alpha = 0.5f),
+                cursorColor = AC_PRIMARY_START,
+                errorCursorColor = AC_DANGER_START
+            )
+        )
+
+        if (error.isNotEmpty()) {
+            Text(
+                text = "❌ $error",
+                fontSize = 12.sp,
+                color = AC_DANGER_START,
+                modifier = Modifier.padding(top = 4.dp, start = 4.dp),
+                textAlign = TextAlign.Right
+            )
+        } else if (helperText.isNotEmpty()) {
+            Text(
+                text = helperText,
+                fontSize = 11.sp,
+                color = AC_TEXT_LIGHT,
+                modifier = Modifier.padding(top = 4.dp, start = 4.dp),
+                textAlign = TextAlign.Right
+            )
+        }
+    }
+}
+
+// ─────────────────────────────────────────
+// فیلد ورودی با TextFieldValue (برای رفع باگ کاما)
+// ─────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CardInputFieldWithTFV(
+    label: String,
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    placeholder: String,
+    error: String,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    helperText: String = ""
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = label,
             fontSize = 14.sp,

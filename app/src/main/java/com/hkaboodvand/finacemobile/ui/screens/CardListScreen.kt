@@ -77,7 +77,7 @@ fun CardListScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var accountToDelete by remember { mutableStateOf<Account?>(null) }
 
-    // بارگذاری خودکار کارت‌ها
+    // بارگذاری خودکار حساب‌ها
     LaunchedEffect(Unit) {
         repo.getAllAccounts().collect { list ->
             accounts = list
@@ -92,7 +92,7 @@ fun CardListScreen(
 
             if (hasTransactions) {
                 snackbarHostState.showSnackbar(
-                    "❌ این کارت تراکنش دارد و قابل حذف نیست"
+                    "❌ این حساب تراکنش دارد و قابل حذف نیست"
                 )
                 return@launch
             }
@@ -107,7 +107,7 @@ fun CardListScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "💳 نمایش کارت‌ها",
+                        "💳 نمایش حساب ها",
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
@@ -125,7 +125,7 @@ fun CardListScreen(
                     IconButton(onClick = onAddCard) {
                         Icon(
                             Icons.Default.Add,
-                            contentDescription = "ثبت کارت جدید",
+                            contentDescription = "ثبت حساب جدید",
                             tint = Color.White
                         )
                     }
@@ -162,7 +162,7 @@ fun CardListScreen(
                         Text(text = "💳", fontSize = 72.sp)
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "هنوز کارتی ثبت نشده",
+                            text = "هنوز حسابی ثبت نشده",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = CL_TEXT
@@ -177,7 +177,7 @@ fun CardListScreen(
                         Spacer(modifier = Modifier.height(24.dp))
                         EmptyStateButton(
                             icon = "➕",
-                            title = "ثبت کارت جدید",
+                            title = "ثبت حساب جدید",
                             onClick = onAddCard
                         )
                     }
@@ -191,7 +191,7 @@ fun CardListScreen(
                             .padding(16.dp)
                     ) {
                         Text(
-                            text = "📋 ${accounts.size} کارت ثبت شده",
+                            text = "📋 ${accounts.size} حساب ثبت شده",
                             fontSize = 13.sp,
                             color = CL_TEXT_LIGHT,
                             modifier = Modifier.padding(bottom = 12.dp)
@@ -222,14 +222,14 @@ fun CardListScreen(
             },
             title = {
                 Text(
-                    "🗑️ حذف کارت",
+                    "🗑️ حذف حساب",
                     fontWeight = FontWeight.Bold,
                     color = CL_TEXT
                 )
             },
             text = {
                 Text(
-                    "آیا مطمئن هستید که می‌خواهید کارت «${accountToDelete?.name}» را حذف کنید؟\n\nاین عملیات قابل بازگشت نیست.",
+                    "آیا مطمئن هستید که می‌خواهید حساب «${accountToDelete?.name}» را حذف کنید؟\n\nاین عملیات قابل بازگشت نیست.",
                     color = CL_TEXT
                 )
             },
@@ -244,7 +244,7 @@ fun CardListScreen(
                             scope.launch {
                                 try {
                                     repo.deleteAccount(acc.id)
-                                    snackbarHostState.showSnackbar("✅ کارت حذف شد")
+                                    snackbarHostState.showSnackbar("✅ حساب حذف شد")
                                 } catch (e: Exception) {
                                     snackbarHostState.showSnackbar("❌ خطا: ${e.message}")
                                 }
@@ -277,7 +277,7 @@ fun CardListScreen(
 }
 
 // ─────────────────────────────────────────
-// آیتم کارت توی لیست
+// آیتم حساب توی لیست
 // ─────────────────────────────────────────
 @Composable
 fun AccountCardItem(
