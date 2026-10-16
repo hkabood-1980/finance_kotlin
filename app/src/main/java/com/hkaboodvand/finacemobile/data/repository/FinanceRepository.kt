@@ -328,13 +328,14 @@ class FinanceRepository(private val db: AppDatabase) {
         sender: String,
         cardLast4: String,
         accountId: Long,
-        bankName: String = ""
+        bankName: String = "",
+        accountNumber: String = ""
     ): Long {
         val now = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
             .format(Date())
         return db.smsDao().insertMapping(
             SmsMapping(
-                accountNumber = sender,
+                accountNumber = accountNumber.ifEmpty { sender },
                 cardLast4 = cardLast4,
                 accountId = accountId,
                 bankName = bankName,

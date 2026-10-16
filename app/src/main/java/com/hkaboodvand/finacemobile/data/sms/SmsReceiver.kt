@@ -49,15 +49,33 @@ class SmsReceiver : BroadcastReceiver() {
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         val now = dateFormat.format(Date())
 
-        // چک اتصال خودکار
-        val accountNumber = parsed.accountNumber
-        if (accountNumber != null) {
-            val mapping = db.smsDao().getMappingByAccountNumber(accountNumber)
-            if (mapping != null && mapping.autoApprove) {
-                // خودکار ثبت کن
-                val amount = parsed.amount ?: return
-                val type = parsed.type ?: return
+        // ─── جستجوی mapping با ۳ سطح ───
+        var mapping: com.hkaboodvand.finacemobile.data.db.entity.SmsMapping? = null
 
+        // سطح ۱: cardLast4 (مهم‌ترین)
+        if (!parsed.cardLast4.isNullOrEmpty()) {
+            mapping = db.smsDao().getMappingByCardLast4(parsed.cardLast4!!)
+            Log.d("SmsReceiver", "Level 1 (cardLast4=${parsed.cardLast4}): ${mapping != null}")
+        }
+
+        // سطح ۲: accountNumber
+        if (mapping == null && !parsed.accountNumber.isNullOrEmpty()) {
+            mapping = db.smsDao().getMappingByAccountNumber(parsed.accountNumber!!)
+            Log.d("SmsReceiver", "Level 2 (accountNumber): ${mapping != null}")
+        }
+
+        // سطح ۳: bankName
+        if (mapping == null && parsed.bank != "نامشخص") {
+            mapping = db.smsDao().getMappingByBankName(parsed.bank)
+            Log.d("SmsReceiver", "Level 3 (bank=${parsed.bank}): ${mapping != null}")
+        }
+
+        // ─── اگه mapping پیدا شد → خودکار ثبت کن ───
+        if (mapping != null && mapping.autoApprove) {
+            val amount = parsed.amount
+            val type = parsed.type
+
+            if (amount != null && type != null) {
                 val result = repo.registerTransaction(
                     accountId = mapping.accountId,
                     type = type,
@@ -68,7 +86,6 @@ class SmsReceiver : BroadcastReceiver() {
                 )
 
                 if (result.isSuccess) {
-                    // ذخیره در صف با status approved
                     db.smsDao().insertSms(
                         SmsQueue(
                             sender = sender,
@@ -82,13 +99,15 @@ class SmsReceiver : BroadcastReceiver() {
                             rawParsed = parsedToJson(parsed)
                         )
                     )
-                    Log.d("SmsReceiver", "Auto-approved SMS")
+                    Log.d("SmsReceiver", "✅ Auto-approved SMS to account ${mapping.accountId}")
+                } else {
+                    Log.e("SmsReceiver", "❌ Auto-approve failed: ${result.exceptionOrNull()?.message}")
                 }
                 return
             }
         }
 
-        // در غیر این صورت، به صف اضافه کن
+        // ─── در غیر این صورت، به صف اضافه کن ───
         db.smsDao().insertSms(
             SmsQueue(
                 sender = sender,
@@ -101,9 +120,8 @@ class SmsReceiver : BroadcastReceiver() {
                 rawParsed = parsedToJson(parsed)
             )
         )
-        Log.d("SmsReceiver", "SMS queued for approval")
+        Log.d("SmsReceiver", "📩 SMS queued for approval")
     }
-
     private fun parsedToJson(parsed: SmsParser.ParsedSms): String {
         return JSONObject().apply {
             put("amount", parsed.amount)

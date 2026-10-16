@@ -32,8 +32,11 @@ import com.hkaboodvand.finacemobile.data.db.AppDatabase
 import com.hkaboodvand.finacemobile.data.db.entity.Account
 import com.hkaboodvand.finacemobile.data.db.entity.SmsQueue
 import com.hkaboodvand.finacemobile.data.repository.FinanceRepository
+import com.hkaboodvand.finacemobile.data.sms.SmsParser
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 // ─────────────────────────────────────────
@@ -68,7 +71,7 @@ val SMS_INCOME_CATEGORIES = listOf(
 )
 
 // ─────────────────────────────────────────
-// توابع فرمت
+// توابع کمکی
 // ─────────────────────────────────────────
 fun formatMoneySMS(value: Double): String {
     val formatter = NumberFormat.getNumberInstance(Locale.US)
@@ -91,7 +94,6 @@ fun parseFormattedNumberSMS(input: String): String {
     return input.filter { it.isDigit() }
 }
 
-// تبدیل تاریخ میلادی به شمسی (بدون کتابخانه)
 fun gregorianToJalaliSMS(gy: Int, gm: Int, gd: Int): Triple<Int, Int, Int> {
     val gDaysInMonth = intArrayOf(0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334)
     val gy2 = if (gm > 2) gy + 1 else gy
@@ -130,6 +132,9 @@ fun toJalaliSMS(miladiDate: String): String {
     }
 }
 
+// ─────────────────────────────────────────
+// صفحه اصلی
+// ─────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SmsScreen(
@@ -141,19 +146,17 @@ fun SmsScreen(
     val db = remember { AppDatabase.getInstance(context) }
     val repo = remember { FinanceRepository(db) }
 
-    // داده‌ها
     var pendingSms by remember { mutableStateOf<List<SmsQueue>>(emptyList()) }
     var accounts by remember { mutableStateOf<List<Account>>(emptyList()) }
 
-    // دیالوگ‌ها
-    var selectedSmsForEdit by remember { mutableStateOf<SmsQueue?>(null) }
+    var showNewSmsDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
+    var selectedSmsForEdit by remember { mutableStateOf<SmsQueue?>(null) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var smsToDelete by remember { mutableStateOf<SmsQueue?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // بارگذاری داده‌ها
     LaunchedEffect(Unit) {
         repo.getPendingSms().collect { list -> pendingSms = list }
     }
@@ -193,27 +196,49 @@ fun SmsScreen(
                 .padding(padding)
                 .background(SMS_BG)
         ) {
-            // ─── راهنما ───
+            // ─── دکمه پیامک جدید ───
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(SMS_CYAN_START, SMS_CYAN_END)
+                            )
+                        )
                 ) {
-                    Text(text = "ℹ️", fontSize = 20.sp)
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "می‌تونی قبل از تأیید، پیامک رو ویرایش کنی (نوع، دسته، مبلغ، کارت).",
-                        fontSize = 12.sp,
-                        color = SMS_TEXT,
-                        textAlign = TextAlign.Right
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showNewSmsDialog = true }
+                            .padding(18.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "➕", fontSize = 26.sp)
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "پیامک جدید (کپی-پیست)",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                textAlign = TextAlign.Right
+                            )
+                            Text(
+                                text = "اگه پیامکی از بانک اومده و برنامه نشناخته ، متن پیامک رو Paste کن، برنامه تحلیل می‌کنه ",
+                                fontSize = 11.sp,
+                                color = Color.White.copy(alpha = 0.85f),
+                                textAlign = TextAlign.Right
+                            )
+                        }
+                    }
                 }
             }
 
@@ -234,11 +259,18 @@ fun SmsScreen(
                         fontWeight = FontWeight.Bold,
                         color = SMS_TEXT
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "برای ثبت پیامک جدید، روی دکمه بالا بزن",
+                        fontSize = 13.sp,
+                        color = SMS_TEXT_LIGHT,
+                        textAlign = TextAlign.Center
+                    )
                 }
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(pendingSms) { sms ->
@@ -247,11 +279,7 @@ fun SmsScreen(
                             onApprove = {
                                 if (accounts.isEmpty()) {
                                     scope.launch {
-                                        snackbarHostState.showSnackbar("⚠️ ابتدا یک کارت ثبت کنید")
-                                    }
-                                } else if (sms.parsedAmount == null || sms.parsedType == null) {
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar("⚠️ ابتدا ویرایش کن و اطلاعات رو کامل کن")
+                                        snackbarHostState.showSnackbar("⚠️ ابتدا یک حساب ثبت کنید")
                                     }
                                 } else {
                                     selectedSmsForEdit = sms
@@ -271,6 +299,21 @@ fun SmsScreen(
                 }
             }
         }
+    }
+
+    // ─── دیالوگ پیامک جدید ───
+    if (showNewSmsDialog) {
+        NewSmsDialog(
+            accounts = accounts,
+            db = db,
+            onDismiss = { showNewSmsDialog = false },
+            onSaved = {
+                scope.launch {
+                    snackbarHostState.showSnackbar("✅ پیامک ذخیره شد")
+                }
+                showNewSmsDialog = false
+            }
+        )
     }
 
     // ─── دیالوگ ویرایش + تأیید ───
@@ -294,10 +337,21 @@ fun SmsScreen(
                         )
                         if (result.isSuccess) {
                             snackbarHostState.showSnackbar("✅ پیامک ثبت شد")
+
+                            val bankName = SmsParser.detectBank(
+                                selectedSmsForEdit!!.sender,
+                                selectedSmsForEdit!!.body
+                            )
+                            val parsed = SmsParser.parse(
+                                selectedSmsForEdit!!.body,
+                                selectedSmsForEdit!!.sender
+                            )
                             repo.learnSmsMapping(
                                 sender = selectedSmsForEdit!!.sender,
-                                cardLast4 = selectedSmsForEdit!!.parsedCard ?: "",
-                                accountId = accountId
+                                cardLast4 = parsed?.cardLast4 ?: "",
+                                accountId = accountId,
+                                bankName = bankName,
+                                accountNumber = parsed?.accountNumber ?: ""
                             )
                         } else {
                             snackbarHostState.showSnackbar(
@@ -338,11 +392,7 @@ fun SmsScreen(
             onDismissRequest = { showDeleteDialog = false },
             icon = { Text(text = "🗑️", fontSize = 40.sp) },
             title = {
-                Text(
-                    "حذف پیامک",
-                    fontWeight = FontWeight.Bold,
-                    color = SMS_DANGER_END
-                )
+                Text("حذف پیامک", fontWeight = FontWeight.Bold, color = SMS_DANGER_END)
             },
             text = {
                 Text(
@@ -400,7 +450,6 @@ fun SmsCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // ─── هدر ───
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -443,7 +492,6 @@ fun SmsCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // ─── متن پیامک ───
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
@@ -491,7 +539,6 @@ fun SmsCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // ─── دکمه‌ها ───
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -529,6 +576,267 @@ fun SmsCard(
 }
 
 // ─────────────────────────────────────────
+// دیالوگ پیامک جدید (کپی-پیست)
+// ─────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun NewSmsDialog(
+    accounts: List<Account>,
+    db: AppDatabase,
+    onDismiss: () -> Unit,
+    onSaved: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+
+    var smsText by remember { mutableStateOf("") }
+    var parsedResult by remember { mutableStateOf<SmsParser.ParsedSms?>(null) }
+    var detectedAccount by remember { mutableStateOf<Account?>(null) }
+    var errorMsg by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                "➕ پیامک جدید",
+                fontWeight = FontWeight.Bold,
+                color = SMS_TEXT
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .fillMaxWidth()
+            ) {
+                Text(
+                    text = "متن پیامک را اینجا Paste کن:",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = SMS_TEXT,
+                    modifier = Modifier.padding(bottom = 6.dp),
+                    textAlign = TextAlign.Right
+                )
+
+                OutlinedTextField(
+                    value = smsText,
+                    onValueChange = {
+                        smsText = it
+                        parsedResult = null
+                        detectedAccount = null
+                        errorMsg = ""
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    placeholder = {
+                        Text(
+                            "متن پیامک بانکی...",
+                            color = SMS_TEXT_LIGHT.copy(alpha = 0.5f),
+                            fontSize = 13.sp
+                        )
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = SMS_CYAN_START,
+                        unfocusedBorderColor = Color(0xFFD0D7DE),
+                        focusedTextColor = SMS_TEXT,
+                        unfocusedTextColor = SMS_TEXT,
+                        cursorColor = SMS_CYAN_START
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                TextButton(
+                    onClick = {
+                        if (smsText.isBlank()) {
+                            errorMsg = "متن پیامک را Paste کنید"
+                            return@TextButton
+                        }
+                        val parsed = SmsParser.parse(smsText, "")
+                        if (parsed == null || parsed.amount == null) {
+                            errorMsg = "نتونستم پیامک رو تحلیل کنم. لطفاً بررسی کن."
+                            parsedResult = null
+                            return@TextButton
+                        }
+                        parsedResult = parsed
+                        errorMsg = ""
+
+                        detectedAccount = null
+                        if (!parsed.cardLast4.isNullOrEmpty()) {
+                            detectedAccount = accounts.find {
+                                it.cardNumber.endsWith(parsed.cardLast4!!)
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = SMS_CYAN_END
+                    )
+                ) {
+                    Text("🔍 تحلیل پیامک", fontWeight = FontWeight.Bold)
+                }
+
+                if (errorMsg.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "❌ $errorMsg",
+                        fontSize = 12.sp,
+                        color = SMS_DANGER_END,
+                        textAlign = TextAlign.Right
+                    )
+                }
+
+                if (parsedResult != null) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F4F8))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text(
+                                text = "📋 نتیجه تحلیل:",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = SMS_TEXT,
+                                modifier = Modifier.padding(bottom = 8.dp),
+                                textAlign = TextAlign.Right
+                            )
+
+                            val result = parsedResult!!
+                            InfoRow("🏦 بانک", result.bank)
+                            InfoRow("💰 مبلغ", formatMoneySMS(result.amount ?: 0.0))
+                            InfoRow("💸 نوع", result.type ?: "نامشخص")
+                            InfoRow("🔢 کارت", "**** ${result.cardLast4 ?: "?"}")
+
+                            if (detectedAccount != null) {
+                                InfoRow("💳 حساب متصل", detectedAccount!!.name)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            SMS_SUCCESS_START.copy(alpha = 0.15f),
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .padding(8.dp)
+                                ) {
+                                    Text(
+                                        text = "✅ حساب خودکار تشخیص داده شد",
+                                        fontSize = 12.sp,
+                                        color = SMS_SUCCESS_END,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.Right,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            } else {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            SMS_WARNING_START.copy(alpha = 0.15f),
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .padding(8.dp)
+                                ) {
+                                    Text(
+                                        text = "⚠️ حساب پیدا نشد. بعد از ذخیره، دستی متصل کن.",
+                                        fontSize = 12.sp,
+                                        color = SMS_WARNING_END,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.Right,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (parsedResult != null) {
+                TextButton(
+                    onClick = {
+                        val result = parsedResult!!
+                        val accountId = detectedAccount?.id
+
+                        scope.launch {
+                            try {
+                                val dateFormat = SimpleDateFormat(
+                                    "yyyy-MM-dd HH:mm:ss",
+                                    Locale.getDefault()
+                                )
+                                val now = dateFormat.format(Date())
+
+                                db.smsDao().insertSms(
+                                    SmsQueue(
+                                        sender = "دستی",
+                                        body = smsText,
+                                        receivedAt = now,
+                                        status = "pending",
+                                        parsedAmount = result.amount,
+                                        parsedType = result.type,
+                                        parsedCard = result.cardLast4,
+                                        accountId = accountId,
+                                        rawParsed = ""
+                                    )
+                                )
+                                onSaved()
+                            } catch (e: Exception) {
+                                errorMsg = "خطا: ${e.message}"
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = SMS_SUCCESS_END
+                    )
+                ) {
+                    Text("✅ ذخیره در لیست", fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.textButtonColors(contentColor = SMS_TEXT_LIGHT)
+            ) {
+                Text("❌ انصراف")
+            }
+        },
+        containerColor = Color.White
+    )
+}
+
+// ─────────────────────────────────────────
+// ردیف اطلاعات
+// ─────────────────────────────────────────
+@Composable
+fun InfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            color = SMS_TEXT_LIGHT
+        )
+        Text(
+            text = value,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = SMS_TEXT
+        )
+    }
+}
+
+// ─────────────────────────────────────────
 // دیالوگ ویرایش پیامک
 // ─────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
@@ -558,16 +866,13 @@ fun SmsEditDialog(
     var showCategoryMenu by remember { mutableStateOf(false) }
     var showAccountMenu by remember { mutableStateOf(false) }
 
-    val currentCategories = if (editType == "هزینه") SMS_EXPENSE_CATEGORIES else SMS_INCOME_CATEGORIES
+    val currentCategories = if (editType == "هزینه") SMS_EXPENSE_CATEGORIES
+    else SMS_INCOME_CATEGORIES
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(
-                "✏️ ویرایش و تأیید پیامک",
-                fontWeight = FontWeight.Bold,
-                color = SMS_TEXT
-            )
+            Text("✏️ ویرایش و تأیید پیامک", fontWeight = FontWeight.Bold, color = SMS_TEXT)
         },
         text = {
             Column(
@@ -575,7 +880,6 @@ fun SmsEditDialog(
                     .verticalScroll(rememberScrollState())
                     .fillMaxWidth()
             ) {
-                // ─── نوع ───
                 Text(
                     "نوع:",
                     fontSize = 13.sp,
@@ -587,7 +891,7 @@ fun SmsEditDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    TypeSelectorButton(
+                    TypeSelectorButtonSms(
                         title = "💸 هزینه",
                         isSelected = editType == "هزینه",
                         startColor = SMS_DANGER_START,
@@ -598,7 +902,7 @@ fun SmsEditDialog(
                             editCategory = "پیامک بانکی"
                         }
                     )
-                    TypeSelectorButton(
+                    TypeSelectorButtonSms(
                         title = "💵 درآمد",
                         isSelected = editType == "درآمد",
                         startColor = SMS_SUCCESS_START,
@@ -613,7 +917,6 @@ fun SmsEditDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // ─── دسته ───
                 Text(
                     "دسته:",
                     fontSize = 13.sp,
@@ -647,7 +950,6 @@ fun SmsEditDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // ─── مبلغ ───
                 Text(
                     "مبلغ (تومان):",
                     fontSize = 13.sp,
@@ -665,7 +967,6 @@ fun SmsEditDialog(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
                     singleLine = true,
-                    placeholder = { Text("0", color = SMS_TEXT_LIGHT.copy(alpha = 0.5f)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = SMS_CYAN_START,
@@ -678,7 +979,6 @@ fun SmsEditDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // ─── کارت ───
                 Text(
                     "کارت:",
                     fontSize = 13.sp,
@@ -717,9 +1017,7 @@ fun SmsEditDialog(
                 onClick = {
                     val amount = parseFormattedNumberSMS(editAmount).toDoubleOrNull() ?: 0.0
                     val account = selectedAccount ?: return@TextButton
-
                     if (amount <= 0) return@TextButton
-
                     onSaveAndApprove(
                         account.id,
                         editCategory.ifEmpty { "پیامک بانکی" },
@@ -761,8 +1059,6 @@ fun SmsEditDialog(
         containerColor = Color.White
     )
 
-    // ─── منوی دسته ───
-    // ─── منوی دسته (با امکان نوشتن دلخواه) ───
     if (showCategoryMenu) {
         var customCategory by remember { mutableStateOf("") }
 
@@ -775,7 +1071,6 @@ fun SmsEditDialog(
                         .verticalScroll(rememberScrollState())
                         .fillMaxWidth()
                 ) {
-                    // ─── دسته دلخواه ───
                     Text(
                         text = "✍️ نوشتن دسته دلخواه:",
                         fontSize = 13.sp,
@@ -828,7 +1123,6 @@ fun SmsEditDialog(
                     HorizontalDivider(color = Color(0xFFE2EBF5))
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // ─── لیست پیشنهادی ───
                     Text(
                         text = "یا از لیست انتخاب کن:",
                         fontSize = 12.sp,
@@ -865,7 +1159,6 @@ fun SmsEditDialog(
         )
     }
 
-    // ─── منوی کارت ───
     if (showAccountMenu) {
         AlertDialog(
             onDismissRequest = { showAccountMenu = false },
@@ -874,7 +1167,7 @@ fun SmsEditDialog(
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     accounts.forEach { acc ->
                         Text(
-                            text = "💳 ${acc.name} (${acc.bank})\n💰 ${formatMoneySMS(acc.balance)}",
+                            text = "💳 ${acc.name} (${acc.bank})",
                             fontSize = 15.sp,
                             color = if (selectedAccount?.id == acc.id) SMS_INFO_END else SMS_TEXT,
                             fontWeight = if (selectedAccount?.id == acc.id) FontWeight.Bold else FontWeight.Normal,
@@ -905,7 +1198,7 @@ fun SmsEditDialog(
 // دکمه‌های کمکی
 // ─────────────────────────────────────────
 @Composable
-fun TypeSelectorButton(
+fun TypeSelectorButtonSms(
     title: String,
     isSelected: Boolean,
     startColor: Color,
