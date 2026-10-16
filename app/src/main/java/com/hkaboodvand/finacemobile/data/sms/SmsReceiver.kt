@@ -6,6 +6,7 @@ import android.content.Intent
 import android.provider.Telephony
 import android.util.Log
 import com.hkaboodvand.finacemobile.data.db.AppDatabase
+import com.hkaboodvand.finacemobile.data.db.entity.SmsMapping
 import com.hkaboodvand.finacemobile.data.db.entity.SmsQueue
 import com.hkaboodvand.finacemobile.data.repository.FinanceRepository
 import kotlinx.coroutines.CoroutineScope
@@ -33,7 +34,11 @@ class SmsReceiver : BroadcastReceiver() {
 
                 Log.d("SmsReceiver", "SMS from $sender: $body")
 
-                processSms(db, repo, sender, body)
+                try {
+                    processSms(db, repo, sender, body)
+                } catch (e: Exception) {
+                    Log.e("SmsReceiver", "Error processing SMS: ${e.message}")
+                }
             }
         }
     }
@@ -44,34 +49,57 @@ class SmsReceiver : BroadcastReceiver() {
         sender: String,
         body: String
     ) {
-        val parsed = SmsParser.parse(body, sender) ?: return
-
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         val now = dateFormat.format(Date())
 
-        // ─── جستجوی mapping با ۳ سطح ───
-        var mapping: com.hkaboodvand.finacemobile.data.db.entity.SmsMapping? = null
-
-        // سطح ۱: cardLast4 (مهم‌ترین)
-        if (!parsed.cardLast4.isNullOrEmpty()) {
-            mapping = db.smsDao().getMappingByCardLast4(parsed.cardLast4!!)
-            Log.d("SmsReceiver", "Level 1 (cardLast4=${parsed.cardLast4}): ${mapping != null}")
+        // ─── مرحله ۱: تحلیل پیامک ───
+        val parsed = try {
+            SmsParser.parse(body, sender)
+        } catch (e: Exception) {
+            Log.e("SmsReceiver", "Parse error: ${e.message}")
+            null
         }
 
-        // سطح ۲: accountNumber
-        if (mapping == null && !parsed.accountNumber.isNullOrEmpty()) {
-            mapping = db.smsDao().getMappingByAccountNumber(parsed.accountNumber!!)
-            Log.d("SmsReceiver", "Level 2 (accountNumber): ${mapping != null}")
+        // ─── مرحله ۲: چک کردن بانکی بودن ───
+        val isBankSms = try {
+            SmsParser.isBankSms(body, sender)
+        } catch (e: Exception) {
+            false
         }
 
-        // سطح ۳: bankName
-        if (mapping == null && parsed.bank != "نامشخص") {
-            mapping = db.smsDao().getMappingByBankName(parsed.bank)
-            Log.d("SmsReceiver", "Level 3 (bank=${parsed.bank}): ${mapping != null}")
+        // ─── اگه پیامک بانکی نبود → ذخیره نکن ───
+        if (!isBankSms) {
+            Log.d("SmsReceiver", "Not a bank SMS, skipping")
+            return
         }
 
-        // ─── اگه mapping پیدا شد → خودکار ثبت کن ───
-        if (mapping != null && mapping.autoApprove) {
+        // ─── مرحله ۳: جستجوی mapping (فقط اگه parse شد) ───
+        var mapping: SmsMapping? = null
+
+        if (parsed != null) {
+            // سطح ۱: cardLast4
+            if (!parsed.cardLast4.isNullOrEmpty()) {
+                mapping = db.smsDao().getMappingByCardLast4(parsed.cardLast4!!)
+                Log.d("SmsReceiver", "L1 (cardLast4=${parsed.cardLast4}): ${mapping != null}")
+            }
+
+            // سطح ۲: accountNumber
+            if (mapping == null && !parsed.accountNumber.isNullOrEmpty()) {
+                mapping = db.smsDao().getMappingByAccountNumber(parsed.accountNumber!!)
+                Log.d("SmsReceiver", "L2 (accountNumber): ${mapping != null}")
+            }
+
+            // سطح ۳: bankName
+            if (mapping == null && parsed.bank != "نامشخص") {
+                mapping = db.smsDao().getMappingByBankName(parsed.bank)
+                Log.d("SmsReceiver", "L3 (bank=${parsed.bank}): ${mapping != null}")
+            }
+        }
+
+        // ─── مرحله ۴: تصمیم‌گیری ───
+
+        // اگه mapping پیدا شد و autoApprove فعاله
+        if (mapping != null && mapping.autoApprove && parsed != null) {
             val amount = parsed.amount
             val type = parsed.type
 
@@ -86,6 +114,7 @@ class SmsReceiver : BroadcastReceiver() {
                 )
 
                 if (result.isSuccess) {
+                    // ثبت به‌عنوان approved
                     db.smsDao().insertSms(
                         SmsQueue(
                             sender = sender,
@@ -99,38 +128,45 @@ class SmsReceiver : BroadcastReceiver() {
                             rawParsed = parsedToJson(parsed)
                         )
                     )
-                    Log.d("SmsReceiver", "✅ Auto-approved SMS to account ${mapping.accountId}")
+                    Log.d("SmsReceiver", "✅ Auto-approved to account ${mapping.accountId}")
+                    return
                 } else {
                     Log.e("SmsReceiver", "❌ Auto-approve failed: ${result.exceptionOrNull()?.message}")
                 }
-                return
             }
         }
 
-        // ─── در غیر این صورت، به صف اضافه کن ───
+        // ─── در غیر این صورت: ذخیره در صف (pending) ───
+        // این حتی وقتی parse نشده هم انجام می‌شه
         db.smsDao().insertSms(
             SmsQueue(
                 sender = sender,
                 body = body,
                 receivedAt = now,
                 status = "pending",
-                parsedAmount = parsed.amount,
-                parsedType = parsed.type,
-                parsedCard = parsed.cardLast4,
-                rawParsed = parsedToJson(parsed)
+                parsedAmount = parsed?.amount,
+                parsedType = parsed?.type,
+                parsedCard = parsed?.cardLast4,
+                accountId = null,
+                rawParsed = if (parsed != null) parsedToJson(parsed) else ""
             )
         )
-        Log.d("SmsReceiver", "📩 SMS queued for approval")
+        Log.d("SmsReceiver", "📩 SMS queued (parsed=${parsed != null})")
     }
+
     private fun parsedToJson(parsed: SmsParser.ParsedSms): String {
-        return JSONObject().apply {
-            put("amount", parsed.amount)
-            put("type", parsed.type)
-            put("card_last4", parsed.cardLast4)
-            put("account_number", parsed.accountNumber)
-            put("balance", parsed.balance)
-            put("reference_code", parsed.referenceCode)
-            put("bank", parsed.bank)
-        }.toString()
+        return try {
+            JSONObject().apply {
+                put("amount", parsed.amount)
+                put("type", parsed.type)
+                put("card_last4", parsed.cardLast4)
+                put("account_number", parsed.accountNumber)
+                put("balance", parsed.balance)
+                put("reference_code", parsed.referenceCode)
+                put("bank", parsed.bank)
+            }.toString()
+        } catch (e: Exception) {
+            ""
+        }
     }
 }
