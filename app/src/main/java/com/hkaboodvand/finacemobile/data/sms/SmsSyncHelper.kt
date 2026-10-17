@@ -22,7 +22,17 @@ object SmsSyncHelper {
         val repo = FinanceRepository(db)
         val prefs = AppPreferences(context)
 
-        val lastTimestamp = prefs.lastSmsTimestamp.first() ?: 0L
+        val currentTimestamp = System.currentTimeMillis()
+        var lastTimestamp = prefs.lastSmsTimestamp.first()
+
+        // اگه اولین باره، از الان شروع کن
+        if (lastTimestamp == null || lastTimestamp == 0L) {
+            lastTimestamp = currentTimestamp
+            prefs.setLastSmsTimestamp(lastTimestamp)
+            Log.d("SmsSync", "First run: Setting timestamp to now ($currentTimestamp)")
+            return@withContext
+        }
+
         Log.d("SmsSync", "Last timestamp: $lastTimestamp")
 
         val cursor = try {
@@ -74,7 +84,6 @@ object SmsSyncHelper {
 
         if (db.smsDao().isSmsExists(body, now) > 0) return
 
-        // جستجوی mapping
         var mapping: SmsMapping? = null
         if (!parsed.cardLast4.isNullOrEmpty()) {
             mapping = db.smsDao().getMappingByCardLast4(parsed.cardLast4!!)
@@ -86,9 +95,9 @@ object SmsSyncHelper {
             mapping = db.smsDao().getMappingByBankName(parsed.bank)
         }
 
-        // خودکار
+        // ─── خودکار با اطمینان >= 85 ───
         if (mapping != null && mapping.autoApprove &&
-            parsed.confidence >= 70 &&
+            parsed.confidence >= 85 &&
             parsed.amount != null &&
             parsed.type != null
         ) {

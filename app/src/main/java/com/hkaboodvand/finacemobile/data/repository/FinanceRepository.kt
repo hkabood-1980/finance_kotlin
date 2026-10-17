@@ -11,6 +11,8 @@ import java.util.Locale
 import kotlinx.coroutines.flow.map
 import com.hkaboodvand.finacemobile.data.db.entity.SmsMapping
 import com.hkaboodvand.finacemobile.data.db.entity.SmsQueue
+import kotlinx.coroutines.flow.first
+import com.hkaboodvand.finacemobile.data.sms.SmsParser
 
 
 class FinanceRepository(private val db: AppDatabase) {
@@ -331,9 +333,9 @@ class FinanceRepository(private val db: AppDatabase) {
         bankName: String = "",
         accountNumber: String = ""
     ): Long {
-        val now = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-            .format(Date())
-        return db.smsDao().insertMapping(
+        val now = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
+
+        val mappingId = db.smsDao().insertMapping(
             SmsMapping(
                 accountNumber = accountNumber.ifEmpty { sender },
                 cardLast4 = cardLast4,
@@ -343,6 +345,33 @@ class FinanceRepository(private val db: AppDatabase) {
                 createdAt = now
             )
         )
+
+        // ─── تأیید خودکار پیامک‌های هم‌خانواده در صف ───
+        val allPending = db.smsDao().getPending().first()
+        for (sms in allPending) {
+            var isMatch = false
+            if (cardLast4.isNotEmpty() && sms.parsedCard == cardLast4) isMatch = true
+            if (!isMatch && bankName.isNotEmpty()) {
+                val smsBank = SmsParser.detectBank(sms.sender, sms.body)
+                if (smsBank == bankName) isMatch = true
+            }
+
+            if (isMatch && sms.confidence >= 85 && sms.parsedAmount != null && sms.parsedType != null) {
+                val result = registerTransaction(
+                    accountId = accountId,
+                    type = sms.parsedType,
+                    category = "پیامک بانکی (خودکار)",
+                    amount = sms.parsedAmount,
+                    place = sms.sender,
+                    description = sms.body.take(100)
+                )
+                if (result.isSuccess) {
+                    db.smsDao().updateStatus(sms.id, "approved", accountId)
+                }
+            }
+        }
+
+        return mappingId
     }
 
     // =====================================================

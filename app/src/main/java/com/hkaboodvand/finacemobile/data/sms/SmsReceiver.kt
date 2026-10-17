@@ -54,24 +54,12 @@ class SmsReceiver : BroadcastReceiver() {
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         val now = dateFormat.format(Date(timestamp))
 
-        // تحلیل پیامک
         val parsed = SmsParser.parse(body, sender) ?: return
 
-        // اگه پیامک ناموفق یا اطمینان < 50 → رد کن
-        if (parsed.isFailed || parsed.confidence < 50) {
-            Log.d("SmsReceiver", "Skipping low-confidence SMS (${parsed.confidence}%)")
-            return
-        }
+        if (parsed.isFailed || parsed.confidence < 50) return
+        if (db.smsDao().isSmsExists(body, now) > 0) return
 
-        // چک تکراری بودن
-        if (db.smsDao().isSmsExists(body, now) > 0) {
-            Log.d("SmsReceiver", "Duplicate SMS, skipping")
-            return
-        }
-
-        // جستجوی mapping (۳ سطح)
         var mapping: SmsMapping? = null
-
         if (!parsed.cardLast4.isNullOrEmpty()) {
             mapping = db.smsDao().getMappingByCardLast4(parsed.cardLast4!!)
         }
@@ -82,9 +70,9 @@ class SmsReceiver : BroadcastReceiver() {
             mapping = db.smsDao().getMappingByBankName(parsed.bank)
         }
 
-        // اگه حساب پیدا شد + اطمینان >= 70 + مبلغ و نوع مشخص → خودکار ثبت
+        // ─── اصلاح مشکل ۱: شرط 85 ───
         if (mapping != null && mapping.autoApprove &&
-            parsed.confidence >= 70 &&
+            parsed.confidence >= 85 &&
             parsed.amount != null &&
             parsed.type != null
         ) {
@@ -100,44 +88,25 @@ class SmsReceiver : BroadcastReceiver() {
             if (result.isSuccess) {
                 db.smsDao().insertSms(
                     SmsQueue(
-                        sender = sender,
-                        body = body,
-                        receivedAt = now,
-                        status = "approved",
-                        parsedAmount = parsed.amount,
-                        parsedType = parsed.type,
-                        parsedCard = parsed.cardLast4,
-                        accountId = mapping.accountId,
-                        rawParsed = "",
-                        confidence = parsed.confidence,
-                        isFailed = parsed.isFailed,
-                        isReversal = parsed.isReversal,
-                        jalaliDateTime = parsed.jalaliDateTime
+                        sender = sender, body = body, receivedAt = now, status = "approved",
+                        parsedAmount = parsed.amount, parsedType = parsed.type,
+                        parsedCard = parsed.cardLast4, accountId = mapping.accountId,
+                        confidence = parsed.confidence, isFailed = parsed.isFailed,
+                        isReversal = parsed.isReversal, jalaliDateTime = parsed.jalaliDateTime
                     )
                 )
-                Log.d("SmsReceiver", "✅ Auto-approved (${parsed.confidence}%)")
                 return
             }
         }
 
-        // در غیر این صورت، توی صف بذار
         db.smsDao().insertSms(
             SmsQueue(
-                sender = sender,
-                body = body,
-                receivedAt = now,
-                status = "pending",
-                parsedAmount = parsed.amount,
-                parsedType = parsed.type,
-                parsedCard = parsed.cardLast4,
-                accountId = mapping?.accountId,
-                rawParsed = "",
-                confidence = parsed.confidence,
-                isFailed = parsed.isFailed,
-                isReversal = parsed.isReversal,
-                jalaliDateTime = parsed.jalaliDateTime
+                sender = sender, body = body, receivedAt = now, status = "pending",
+                parsedAmount = parsed.amount, parsedType = parsed.type,
+                parsedCard = parsed.cardLast4, accountId = mapping?.accountId,
+                confidence = parsed.confidence, isFailed = parsed.isFailed,
+                isReversal = parsed.isReversal, jalaliDateTime = parsed.jalaliDateTime
             )
         )
-        Log.d("SmsReceiver", "📩 Queued (confidence=${parsed.confidence}%, type=${parsed.type})")
     }
 }
