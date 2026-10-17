@@ -28,14 +28,17 @@ interface SmsDao {
     @Insert
     suspend fun insertSms(sms: SmsQueue): Long
 
-    @Query("UPDATE sms_queue SET status = :status, accountId = :accountId WHERE id = :id")
-    suspend fun updateStatus(id: Long, status: String, accountId: Long?)
-
     @Update
     suspend fun updateSms(sms: SmsQueue)
 
+    @Query("UPDATE sms_queue SET status = :status, accountId = :accountId WHERE id = :id")
+    suspend fun updateStatus(id: Long, status: String, accountId: Long?)
+
     @Query("DELETE FROM sms_queue WHERE id = :id")
     suspend fun deleteSms(id: Long)
+
+    @Query("SELECT COUNT(*) FROM sms_queue WHERE body = :body AND receivedAt = :receivedAt")
+    suspend fun isSmsExists(body: String, receivedAt: String): Int
 
     // =====================================================
     // SMS Mapping
@@ -43,7 +46,6 @@ interface SmsDao {
 
     @Query("SELECT * FROM sms_account_mapping WHERE accountNumber = :accountNumber AND autoApprove = 1 LIMIT 1")
     suspend fun getMappingByAccountNumber(accountNumber: String): SmsMapping?
-
 
     @Query("SELECT * FROM sms_account_mapping WHERE cardLast4 = :cardLast4 AND autoApprove = 1 LIMIT 1")
     suspend fun getMappingByCardLast4(cardLast4: String): SmsMapping?

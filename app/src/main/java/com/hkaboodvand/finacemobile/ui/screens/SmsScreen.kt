@@ -536,7 +536,43 @@ fun SmsCard(
                     )
                 }
             }
-
+            // ─── نمایش وضعیت + اطمینان ───
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (sms.isFailed) {
+                    Box(
+                        modifier = Modifier
+                            .background(SMS_DANGER_START.copy(alpha = 0.2f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text("❌ ناموفق", fontSize = 10.sp, color = SMS_DANGER_END, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (sms.isReversal) {
+                    Box(
+                        modifier = Modifier
+                            .background(SMS_WARNING_START.copy(alpha = 0.2f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text("🔄 برگشت", fontSize = 10.sp, color = SMS_WARNING_END, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .background(Color(0xFFF0F4F8), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        "اطمینان: ${sms.confidence}٪",
+                        fontSize = 10.sp,
+                        color = SMS_TEXT_LIGHT,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(12.dp))
 
             Row(

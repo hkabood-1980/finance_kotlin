@@ -9,16 +9,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
-import com.hkaboodvand.finacemobile.ui.theme.FinacemobileTheme
+import com.hkaboodvand.finacemobile.data.sms.SmsSyncHelper
 import com.hkaboodvand.finacemobile.ui.navigation.AppNavigation
+import com.hkaboodvand.finacemobile.ui.theme.FinacemobileTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
-    // درخواست مجوز پیامک
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        // نتیجه‌ی مجوزها
         permissions.forEach { (permission, granted) ->
             android.util.Log.d("MainActivity", "$permission: $granted")
         }
@@ -27,16 +29,21 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // فعال‌سازی RTL
-        window.decorView.layoutDirection = android.view.View.LAYOUT_DIRECTION_RTL
-
-        // درخواست مجوز پیامک
         requestPermissionLauncher.launch(
             arrayOf(
                 Manifest.permission.READ_SMS,
                 Manifest.permission.RECEIVE_SMS
             )
         )
+
+        // سینک پیامک‌های از دست رفته
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                SmsSyncHelper.syncMissedSms(applicationContext)
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "SMS sync error: ${e.message}")
+            }
+        }
 
         setContent {
             FinacemobileTheme {

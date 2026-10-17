@@ -16,6 +16,7 @@ class AppPreferences(private val context: Context) {
         val SAVINGS_ACCOUNT_ID = longPreferencesKey("savings_account_id")
         val AUTO_BACKUP_ENABLED = booleanPreferencesKey("auto_backup_enabled")
         val LAST_BACKUP_TIME = longPreferencesKey("last_backup_time")
+        val LAST_SMS_TIMESTAMP = longPreferencesKey("last_sms_timestamp")
     }
 
     val savingsAccountId: Flow<Long?> = context.dataStore.data
@@ -48,6 +49,16 @@ class AppPreferences(private val context: Context) {
     suspend fun setLastBackupTime(time: Long) {
         context.dataStore.edit { prefs ->
             prefs[LAST_BACKUP_TIME] = time
+        }
+    }
+
+    // ─── جدید: آخرین timestamp پیامک ───
+    val lastSmsTimestamp: Flow<Long?> = context.dataStore.data
+        .map { prefs -> prefs[LAST_SMS_TIMESTAMP] }
+
+    suspend fun setLastSmsTimestamp(time: Long) {
+        context.dataStore.edit { prefs ->
+            prefs[LAST_SMS_TIMESTAMP] = time
         }
     }
 }

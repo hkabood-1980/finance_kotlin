@@ -15,5 +15,10 @@ data class SmsQueue(
     val parsedType: String? = null,
     val parsedCard: String? = null,
     val accountId: Long? = null,
-    val rawParsed: String = ""
+    val rawParsed: String = "",
+    // ─── فیلدهای جدید ───
+    val confidence: Int = 0,
+    val isFailed: Boolean = false,
+    val isReversal: Boolean = false,
+    val jalaliDateTime: String? = null
 )

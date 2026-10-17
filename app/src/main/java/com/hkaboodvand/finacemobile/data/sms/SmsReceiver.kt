@@ -8,11 +8,11 @@ import android.util.Log
 import com.hkaboodvand.finacemobile.data.db.AppDatabase
 import com.hkaboodvand.finacemobile.data.db.entity.SmsMapping
 import com.hkaboodvand.finacemobile.data.db.entity.SmsQueue
+import com.hkaboodvand.finacemobile.data.prefs.AppPreferences
 import com.hkaboodvand.finacemobile.data.repository.FinanceRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -27,17 +27,18 @@ class SmsReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             val db = AppDatabase.getInstance(context)
             val repo = FinanceRepository(db)
+            val prefs = AppPreferences(context)
 
             for (sms in messages) {
                 val sender = sms.originatingAddress ?: ""
                 val body = sms.messageBody ?: ""
-
-                Log.d("SmsReceiver", "SMS from $sender: $body")
+                val timestamp = sms.timestampMillis
 
                 try {
-                    processSms(db, repo, sender, body)
+                    processSms(db, repo, sender, body, timestamp)
+                    prefs.setLastSmsTimestamp(timestamp)
                 } catch (e: Exception) {
-                    Log.e("SmsReceiver", "Error processing SMS: ${e.message}")
+                    Log.e("SmsReceiver", "Error: ${e.message}")
                 }
             }
         }
@@ -47,126 +48,96 @@ class SmsReceiver : BroadcastReceiver() {
         db: AppDatabase,
         repo: FinanceRepository,
         sender: String,
-        body: String
+        body: String,
+        timestamp: Long
     ) {
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        val now = dateFormat.format(Date())
+        val now = dateFormat.format(Date(timestamp))
 
-        // ─── مرحله ۱: تحلیل پیامک ───
-        val parsed = try {
-            SmsParser.parse(body, sender)
-        } catch (e: Exception) {
-            Log.e("SmsReceiver", "Parse error: ${e.message}")
-            null
-        }
+        // تحلیل پیامک
+        val parsed = SmsParser.parse(body, sender) ?: return
 
-        // ─── مرحله ۲: چک کردن بانکی بودن ───
-        val isBankSms = try {
-            SmsParser.isBankSms(body, sender)
-        } catch (e: Exception) {
-            false
-        }
-
-        // ─── اگه پیامک بانکی نبود → ذخیره نکن ───
-        if (!isBankSms) {
-            Log.d("SmsReceiver", "Not a bank SMS, skipping")
+        // اگه پیامک ناموفق یا اطمینان < 50 → رد کن
+        if (parsed.isFailed || parsed.confidence < 50) {
+            Log.d("SmsReceiver", "Skipping low-confidence SMS (${parsed.confidence}%)")
             return
         }
 
-        // ─── مرحله ۳: جستجوی mapping (فقط اگه parse شد) ───
+        // چک تکراری بودن
+        if (db.smsDao().isSmsExists(body, now) > 0) {
+            Log.d("SmsReceiver", "Duplicate SMS, skipping")
+            return
+        }
+
+        // جستجوی mapping (۳ سطح)
         var mapping: SmsMapping? = null
 
-        if (parsed != null) {
-            // سطح ۱: cardLast4
-            if (!parsed.cardLast4.isNullOrEmpty()) {
-                mapping = db.smsDao().getMappingByCardLast4(parsed.cardLast4!!)
-                Log.d("SmsReceiver", "L1 (cardLast4=${parsed.cardLast4}): ${mapping != null}")
-            }
-
-            // سطح ۲: accountNumber
-            if (mapping == null && !parsed.accountNumber.isNullOrEmpty()) {
-                mapping = db.smsDao().getMappingByAccountNumber(parsed.accountNumber!!)
-                Log.d("SmsReceiver", "L2 (accountNumber): ${mapping != null}")
-            }
-
-            // سطح ۳: bankName
-            if (mapping == null && parsed.bank != "نامشخص") {
-                mapping = db.smsDao().getMappingByBankName(parsed.bank)
-                Log.d("SmsReceiver", "L3 (bank=${parsed.bank}): ${mapping != null}")
-            }
+        if (!parsed.cardLast4.isNullOrEmpty()) {
+            mapping = db.smsDao().getMappingByCardLast4(parsed.cardLast4!!)
+        }
+        if (mapping == null && !parsed.accountNumber.isNullOrEmpty()) {
+            mapping = db.smsDao().getMappingByAccountNumber(parsed.accountNumber!!)
+        }
+        if (mapping == null && parsed.bank != SmsParser.UNKNOWN_BANK) {
+            mapping = db.smsDao().getMappingByBankName(parsed.bank)
         }
 
-        // ─── مرحله ۴: تصمیم‌گیری ───
+        // اگه حساب پیدا شد + اطمینان >= 70 + مبلغ و نوع مشخص → خودکار ثبت
+        if (mapping != null && mapping.autoApprove &&
+            parsed.confidence >= 70 &&
+            parsed.amount != null &&
+            parsed.type != null
+        ) {
+            val result = repo.registerTransaction(
+                accountId = mapping.accountId,
+                type = parsed.type,
+                category = "پیامک بانکی (خودکار)",
+                amount = parsed.amount,
+                place = parsed.bank,
+                description = body.take(100)
+            )
 
-        // اگه mapping پیدا شد و autoApprove فعاله
-        if (mapping != null && mapping.autoApprove && parsed != null) {
-            val amount = parsed.amount
-            val type = parsed.type
-
-            if (amount != null && type != null) {
-                val result = repo.registerTransaction(
-                    accountId = mapping.accountId,
-                    type = type,
-                    category = "پیامک بانکی (خودکار)",
-                    amount = amount,
-                    place = parsed.bank,
-                    description = body.take(100)
-                )
-
-                if (result.isSuccess) {
-                    // ثبت به‌عنوان approved
-                    db.smsDao().insertSms(
-                        SmsQueue(
-                            sender = sender,
-                            body = body,
-                            receivedAt = now,
-                            status = "approved",
-                            parsedAmount = parsed.amount,
-                            parsedType = parsed.type,
-                            parsedCard = parsed.cardLast4,
-                            accountId = mapping.accountId,
-                            rawParsed = parsedToJson(parsed)
-                        )
+            if (result.isSuccess) {
+                db.smsDao().insertSms(
+                    SmsQueue(
+                        sender = sender,
+                        body = body,
+                        receivedAt = now,
+                        status = "approved",
+                        parsedAmount = parsed.amount,
+                        parsedType = parsed.type,
+                        parsedCard = parsed.cardLast4,
+                        accountId = mapping.accountId,
+                        rawParsed = "",
+                        confidence = parsed.confidence,
+                        isFailed = parsed.isFailed,
+                        isReversal = parsed.isReversal,
+                        jalaliDateTime = parsed.jalaliDateTime
                     )
-                    Log.d("SmsReceiver", "✅ Auto-approved to account ${mapping.accountId}")
-                    return
-                } else {
-                    Log.e("SmsReceiver", "❌ Auto-approve failed: ${result.exceptionOrNull()?.message}")
-                }
+                )
+                Log.d("SmsReceiver", "✅ Auto-approved (${parsed.confidence}%)")
+                return
             }
         }
 
-        // ─── در غیر این صورت: ذخیره در صف (pending) ───
-        // این حتی وقتی parse نشده هم انجام می‌شه
+        // در غیر این صورت، توی صف بذار
         db.smsDao().insertSms(
             SmsQueue(
                 sender = sender,
                 body = body,
                 receivedAt = now,
                 status = "pending",
-                parsedAmount = parsed?.amount,
-                parsedType = parsed?.type,
-                parsedCard = parsed?.cardLast4,
-                accountId = null,
-                rawParsed = if (parsed != null) parsedToJson(parsed) else ""
+                parsedAmount = parsed.amount,
+                parsedType = parsed.type,
+                parsedCard = parsed.cardLast4,
+                accountId = mapping?.accountId,
+                rawParsed = "",
+                confidence = parsed.confidence,
+                isFailed = parsed.isFailed,
+                isReversal = parsed.isReversal,
+                jalaliDateTime = parsed.jalaliDateTime
             )
         )
-        Log.d("SmsReceiver", "📩 SMS queued (parsed=${parsed != null})")
-    }
-
-    private fun parsedToJson(parsed: SmsParser.ParsedSms): String {
-        return try {
-            JSONObject().apply {
-                put("amount", parsed.amount)
-                put("type", parsed.type)
-                put("card_last4", parsed.cardLast4)
-                put("account_number", parsed.accountNumber)
-                put("balance", parsed.balance)
-                put("reference_code", parsed.referenceCode)
-                put("bank", parsed.bank)
-            }.toString()
-        } catch (e: Exception) {
-            ""
-        }
+        Log.d("SmsReceiver", "📩 Queued (confidence=${parsed.confidence}%, type=${parsed.type})")
     }
 }
