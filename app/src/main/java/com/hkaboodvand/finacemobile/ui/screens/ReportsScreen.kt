@@ -547,6 +547,14 @@ fun ReportsScreen(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+            // ─── نمودار میله‌ای درآمد/هزینه ───
+            RPBarChart(
+                totalIncome = totalIncome,
+                totalExpense = totalExpense
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
 
             // ─── تراکنش‌ها ───
             Card(
@@ -1354,6 +1362,174 @@ fun RPTypeSelector(
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (isSelected) Color.White else RP_TEXT
+            )
+        }
+    }
+}
+
+// ─────────────────────────────────────────
+// نمودار میله‌ای درآمد/هزینه
+// ─────────────────────────────────────────
+@Composable
+fun RPBarChart(
+    totalIncome: Double,
+    totalExpense: Double
+) {
+    val maxValue = maxOf(totalIncome, totalExpense, 1.0)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "📊", fontSize = 22.sp)
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "نمودار درآمد و هزینه",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = RP_TEXT
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // ─── میله‌ها ───
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.Bottom
+            ) {
+                // میله درآمد
+                BarColumn(
+                    label = "درآمد",
+                    value = totalIncome,
+                    maxValue = maxValue,
+                    color = RP_SUCCESS_END,
+                    icon = "💵"
+                )
+
+                // میله هزینه
+                BarColumn(
+                    label = "هزینه",
+                    value = totalExpense,
+                    maxValue = maxValue,
+                    color = RP_DANGER_END,
+                    icon = "💸"
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            HorizontalDivider(color = Color(0xFFE2EBF5))
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // ─── مانده ───
+            val balance = totalIncome - totalExpense
+            val balanceColor = if (balance >= 0) RP_SUCCESS_END else RP_DANGER_END
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "💰 مانده",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = RP_TEXT
+                )
+                Text(
+                    text = formatMoneyRP(balance),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = balanceColor
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun BarColumn(
+    label: String,
+    value: Double,
+    maxValue: Double,
+    color: Color,
+    icon: String
+) {
+    val fraction = (value / maxValue).toFloat().coerceIn(0f, 1f)
+    val animatedFraction by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = fraction,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 800),
+        label = "bar"
+    )
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Bottom
+    ) {
+        // مقدار
+        Text(
+            text = if (value >= 1000000) {
+                String.format(Locale.US, "%.1fM", value / 1000000)
+            } else if (value >= 1000) {
+                String.format(Locale.US, "%.0fK", value / 1000)
+            } else {
+                value.toLong().toString()
+            },
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = color
+        )
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // میله
+        Box(
+            modifier = Modifier
+                .width(60.dp)
+                .height(180.dp),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            // پس‌زمینه میله
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(60.dp)
+                    .background(Color(0xFFF0F4F8), RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+            )
+
+            // میله اصلی
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight(animatedFraction)
+                    .width(60.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(color.copy(alpha = 0.9f), color)
+                        ),
+                        RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)
+                    )
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // آیکون + برچسب
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = icon, fontSize = 14.sp)
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = label,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = RP_TEXT
             )
         }
     }
