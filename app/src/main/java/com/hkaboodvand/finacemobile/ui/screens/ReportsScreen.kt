@@ -1,5 +1,7 @@
 package com.hkaboodvand.finacemobile.ui.screens
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -73,7 +75,7 @@ val RP_INCOME_CATEGORIES = listOf(
 )
 
 // ─────────────────────────────────────────
-// توابع کمکی
+// توابع فرمت
 // ─────────────────────────────────────────
 fun formatMoneyRP(value: Double): String {
     val formatter = NumberFormat.getNumberInstance(Locale.US)
@@ -101,7 +103,7 @@ fun parseFormattedNumberRP(input: String): String {
     return input.filter { it.isDigit() }
 }
 
-// تبدیل تاریخ میلادی به شمسی (بدون کتابخانه)
+// تبدیل تاریخ میلادی به شمسی
 fun gregorianToJalaliRP(gy: Int, gm: Int, gd: Int): Triple<Int, Int, Int> {
     val gDaysInMonth = intArrayOf(0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334)
     val gy2 = if (gm > 2) gy + 1 else gy
@@ -205,6 +207,7 @@ fun ReportsScreen(
         repo.getAllAccounts().collect { list -> accounts = list }
     }
 
+    // ─── فیلتر اصلی (با نوع) ───
     val filteredTransactions = allTransactions.filter { tx ->
         val accountOk = selectedAccountId == null || tx.accountId == selectedAccountId
         val typeOk = tx.type == selectedType
@@ -217,6 +220,20 @@ fun ReportsScreen(
             else -> true
         }
         accountOk && typeOk && rangeOk
+    }
+
+    // ─── فیلتر بدون نوع (برای نمودار میله‌ای) ───
+    val rangeFilteredTransactions = allTransactions.filter { tx ->
+        val accountOk = selectedAccountId == null || tx.accountId == selectedAccountId
+        val rangeOk = when (selectedRange) {
+            "ماه" -> {
+                val (y, m) = getJalaliYearMonthRP(tx.date)
+                y == selectedYear && m == selectedMonth
+            }
+            "سال" -> getJalaliYearRP(tx.date) == selectedYear
+            else -> true
+        }
+        accountOk && rangeOk
     }
 
     val totalFiltered = filteredTransactions.sumOf { it.amount }
@@ -240,6 +257,10 @@ fun ReportsScreen(
 
     val totalIncome = filteredTransactions.filter { it.type == "درآمد" }.sumOf { it.amount }
     val totalExpense = filteredTransactions.filter { it.type == "هزینه" }.sumOf { it.amount }
+
+    // مقادیر نمودار میله‌ای (بدون فیلتر نوع)
+    val barChartIncome = rangeFilteredTransactions.filter { it.type == "درآمد" }.sumOf { it.amount }
+    val barChartExpense = rangeFilteredTransactions.filter { it.type == "هزینه" }.sumOf { it.amount }
 
     val monthNames = listOf(
         "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
@@ -437,7 +458,17 @@ fun ReportsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // ─── نمودار ───
+            // ═══════════════════════════════════════
+            //  نمودار میله‌ای (بالای صفحه، هر دو)
+            // ═══════════════════════════════════════
+            RPBarChart(
+                totalIncome = barChartIncome,
+                totalExpense = barChartExpense
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ─── نمودار دایره‌ای (پایین) ───
             if (byCategory.isNotEmpty() && totalFiltered > 0) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -547,14 +578,6 @@ fun ReportsScreen(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-            // ─── نمودار میله‌ای درآمد/هزینه ───
-            RPBarChart(
-                totalIncome = totalIncome,
-                totalExpense = totalExpense
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
 
             // ─── تراکنش‌ها ───
             Card(
@@ -896,6 +919,163 @@ fun ReportsScreen(
 }
 
 // ─────────────────────────────────────────
+// نمودار میله‌ای درآمد/هزینه
+// ─────────────────────────────────────────
+@Composable
+fun RPBarChart(
+    totalIncome: Double,
+    totalExpense: Double
+) {
+    val maxValue = maxOf(totalIncome, totalExpense, 1.0)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "📊", fontSize = 22.sp)
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "نمودار درآمد و هزینه",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = RP_TEXT
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.Bottom
+            ) {
+                RPBarColumn(
+                    label = "درآمد",
+                    value = totalIncome,
+                    maxValue = maxValue,
+                    color = RP_SUCCESS_END,
+                    icon = "💵"
+                )
+
+                RPBarColumn(
+                    label = "هزینه",
+                    value = totalExpense,
+                    maxValue = maxValue,
+                    color = RP_DANGER_END,
+                    icon = "💸"
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            HorizontalDivider(color = Color(0xFFE2EBF5))
+            Spacer(modifier = Modifier.height(12.dp))
+
+            val balance = totalIncome - totalExpense
+            val balanceColor = if (balance >= 0) RP_SUCCESS_END else RP_DANGER_END
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "💰 مانده",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = RP_TEXT
+                )
+                Text(
+                    text = formatMoneyRP(balance),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = balanceColor
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun RPBarColumn(
+    label: String,
+    value: Double,
+    maxValue: Double,
+    color: Color,
+    icon: String
+) {
+    val fraction = (value / maxValue).toFloat().coerceIn(0f, 1f)
+    val animatedFraction by animateFloatAsState(
+        targetValue = fraction,
+        animationSpec = tween(durationMillis = 800),
+        label = "bar"
+    )
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Bottom
+    ) {
+        Text(
+            text = if (value >= 1000000) {
+                String.format(Locale.US, "%.1fM", value / 1000000)
+            } else if (value >= 1000) {
+                String.format(Locale.US, "%.0fK", value / 1000)
+            } else {
+                value.toLong().toString()
+            },
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = color
+        )
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Box(
+            modifier = Modifier
+                .width(60.dp)
+                .height(180.dp),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(60.dp)
+                    .background(Color(0xFFF0F4F8), RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight(animatedFraction)
+                    .width(60.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(color.copy(alpha = 0.9f), color)
+                        ),
+                        RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)
+                    )
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = icon, fontSize = 14.sp)
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = label,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = RP_TEXT
+            )
+        }
+    }
+}
+
+// ─────────────────────────────────────────
 // دیالوگ ویرایش تراکنش
 // ─────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
@@ -941,7 +1121,6 @@ fun RPEditTransactionDialog(
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
 
-                // ─── نوع ───
                 Text(
                     "نوع:",
                     fontSize = 13.sp,
@@ -973,7 +1152,6 @@ fun RPEditTransactionDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // ─── دسته ───
                 Text(
                     "دسته:",
                     fontSize = 13.sp,
@@ -1007,7 +1185,6 @@ fun RPEditTransactionDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // ─── مبلغ ───
                 Text(
                     "مبلغ (تومان):",
                     fontSize = 13.sp,
@@ -1037,7 +1214,6 @@ fun RPEditTransactionDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // ─── کارت ───
                 Text(
                     "کارت:",
                     fontSize = 13.sp,
@@ -1077,7 +1253,6 @@ fun RPEditTransactionDialog(
                     val amount = parseFormattedNumberRP(editAmount).toDoubleOrNull() ?: 0.0
                     val account = selectedAccount ?: return@TextButton
                     if (amount <= 0) return@TextButton
-
                     onSave(
                         editType,
                         editCategory.ifEmpty { "سایر" },
@@ -1109,7 +1284,6 @@ fun RPEditTransactionDialog(
         containerColor = Color.White
     )
 
-    // ─── منوی دسته ───
     if (showCategoryMenu) {
         RPCategoryPickerDialog(
             currentCategories = if (editType == "هزینه") RP_EXPENSE_CATEGORIES
@@ -1123,7 +1297,6 @@ fun RPEditTransactionDialog(
         )
     }
 
-    // ─── منوی کارت ───
     if (showAccountMenu) {
         AlertDialog(
             onDismissRequest = { showAccountMenu = false },
@@ -1159,9 +1332,6 @@ fun RPEditTransactionDialog(
     }
 }
 
-// ─────────────────────────────────────────
-// دیالوگ انتخاب دسته (با امکان دسته دلخواه)
-// ─────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RPCategoryPickerDialog(
@@ -1362,174 +1532,6 @@ fun RPTypeSelector(
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (isSelected) Color.White else RP_TEXT
-            )
-        }
-    }
-}
-
-// ─────────────────────────────────────────
-// نمودار میله‌ای درآمد/هزینه
-// ─────────────────────────────────────────
-@Composable
-fun RPBarChart(
-    totalIncome: Double,
-    totalExpense: Double
-) {
-    val maxValue = maxOf(totalIncome, totalExpense, 1.0)
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "📊", fontSize = 22.sp)
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = "نمودار درآمد و هزینه",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = RP_TEXT
-                )
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // ─── میله‌ها ───
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(220.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                // میله درآمد
-                BarColumn(
-                    label = "درآمد",
-                    value = totalIncome,
-                    maxValue = maxValue,
-                    color = RP_SUCCESS_END,
-                    icon = "💵"
-                )
-
-                // میله هزینه
-                BarColumn(
-                    label = "هزینه",
-                    value = totalExpense,
-                    maxValue = maxValue,
-                    color = RP_DANGER_END,
-                    icon = "💸"
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            HorizontalDivider(color = Color(0xFFE2EBF5))
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // ─── مانده ───
-            val balance = totalIncome - totalExpense
-            val balanceColor = if (balance >= 0) RP_SUCCESS_END else RP_DANGER_END
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "💰 مانده",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = RP_TEXT
-                )
-                Text(
-                    text = formatMoneyRP(balance),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = balanceColor
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun BarColumn(
-    label: String,
-    value: Double,
-    maxValue: Double,
-    color: Color,
-    icon: String
-) {
-    val fraction = (value / maxValue).toFloat().coerceIn(0f, 1f)
-    val animatedFraction by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = fraction,
-        animationSpec = androidx.compose.animation.core.tween(durationMillis = 800),
-        label = "bar"
-    )
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Bottom
-    ) {
-        // مقدار
-        Text(
-            text = if (value >= 1000000) {
-                String.format(Locale.US, "%.1fM", value / 1000000)
-            } else if (value >= 1000) {
-                String.format(Locale.US, "%.0fK", value / 1000)
-            } else {
-                value.toLong().toString()
-            },
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            color = color
-        )
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        // میله
-        Box(
-            modifier = Modifier
-                .width(60.dp)
-                .height(180.dp),
-            contentAlignment = Alignment.BottomCenter
-        ) {
-            // پس‌زمینه میله
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .width(60.dp)
-                    .background(Color(0xFFF0F4F8), RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
-            )
-
-            // میله اصلی
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight(animatedFraction)
-                    .width(60.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(color.copy(alpha = 0.9f), color)
-                        ),
-                        RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)
-                    )
-            )
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // آیکون + برچسب
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text = icon, fontSize = 14.sp)
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-                text = label,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = RP_TEXT
             )
         }
     }
