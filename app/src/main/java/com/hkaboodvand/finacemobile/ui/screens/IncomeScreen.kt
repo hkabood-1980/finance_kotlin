@@ -21,8 +21,10 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,9 +35,6 @@ import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
 
-// ─────────────────────────────────────────
-// رنگ‌ها
-// ─────────────────────────────────────────
 val IN_SUCCESS_START = Color(0xFF7ECBA1)
 val IN_SUCCESS_END = Color(0xFF5BB88A)
 val IN_PRIMARY_START = Color(0xFF7EA6E0)
@@ -46,21 +45,10 @@ val IN_BG = Color(0xFFF0F4F8)
 val IN_TEXT = Color(0xFF1E293B)
 val IN_TEXT_LIGHT = Color(0xFF64748B)
 
-// لیست پیشنهادی نوع درآمد
 val INCOME_CATEGORIES = listOf(
-    "حقوق",
-    "هدیه",
-    "فروش",
-    "سود بانکی",
-    "اجاره",
-    "فریلنس",
-    "یارانه",
-    "سایر"
+    "حقوق", "هدیه", "فروش", "سود بانکی", "اجاره", "فریلنس", "یارانه", "سایر"
 )
 
-// ─────────────────────────────────────────
-// توابع فرمت اعداد
-// ─────────────────────────────────────────
 fun formatNumberWithCommaIN(input: String): String {
     if (input.isEmpty()) return ""
     val digitsOnly = input.filter { it.isDigit() }
@@ -89,29 +77,24 @@ fun IncomeScreen(
     val db = remember { AppDatabase.getInstance(context) }
     val repo = remember { FinanceRepository(db) }
 
-    // لیست کارت‌ها
     var accounts by remember { mutableStateOf<List<Account>>(emptyList()) }
     var selectedAccount by remember { mutableStateOf<Account?>(null) }
 
-    // فیلدهای فرم
-    var amount by remember { mutableStateOf("") }
+    // ─── مبلغ با TextFieldValue ───
+    var amountTFV by remember { mutableStateOf(TextFieldValue("")) }
     var category by remember { mutableStateOf("") }
     var place by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
 
-    // خطاها
     var accountError by remember { mutableStateOf("") }
     var amountError by remember { mutableStateOf("") }
     var categoryError by remember { mutableStateOf("") }
 
-    // State برای منوی انتخاب کارت
     var showAccountMenu by remember { mutableStateOf(false) }
-    // State برای منوی انتخاب دسته
     var showCategoryMenu by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // بارگذاری کارت‌ها
     LaunchedEffect(Unit) {
         repo.getAllAccounts().collect { list ->
             accounts = list
@@ -121,7 +104,6 @@ fun IncomeScreen(
         }
     }
 
-    // اعتبارسنجی
     fun validateAll(): Boolean {
         var isValid = true
 
@@ -130,8 +112,8 @@ fun IncomeScreen(
             isValid = false
         } else accountError = ""
 
-        val amountValue = parseFormattedNumberIN(amount).toDoubleOrNull()
-        if (amount.isBlank()) {
+        val amountValue = parseFormattedNumberIN(amountTFV.text).toDoubleOrNull()
+        if (amountTFV.text.isBlank()) {
             amountError = "مبلغ را وارد کنید"
             isValid = false
         } else if (amountValue == null || amountValue <= 0) {
@@ -147,13 +129,12 @@ fun IncomeScreen(
         return isValid
     }
 
-    // ثبت درآمد
     fun saveIncome() {
         if (!validateAll()) return
 
         scope.launch {
             try {
-                val amountValue = parseFormattedNumberIN(amount).toDoubleOrNull() ?: 0.0
+                val amountValue = parseFormattedNumberIN(amountTFV.text).toDoubleOrNull() ?: 0.0
                 val account = selectedAccount ?: return@launch
 
                 val result = repo.registerTransaction(
@@ -214,13 +195,11 @@ fun IncomeScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
-
             Spacer(modifier = Modifier.height(8.dp))
 
-            // ─── اگه کارتی نیست ───
             if (accounts.isEmpty()) {
                 Text(
-                    text = "⚠️ هنوز کارتی ثبت نکردی!\nاول از منوی «ثبت کارت» یه کارت اضافه کن.",
+                    text = "⚠️ هنوز کارتی ثبت نکردی!\nاول از منوی «ثبت حساب» یه حساب اضافه کن.",
                     fontSize = 14.sp,
                     color = IN_DANGER_END,
                     fontWeight = FontWeight.Bold,
@@ -234,7 +213,7 @@ fun IncomeScreen(
 
             // ─── انتخاب کارت ───
             Text(
-                text = "انتخاب کارت *",
+                text = "انتخاب حساب *",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = IN_TEXT,
@@ -259,7 +238,7 @@ fun IncomeScreen(
                     Text(
                         text = selectedAccount?.let {
                             "💳 ${it.name} (${it.bank})"
-                        } ?: "▼ انتخاب کارت",
+                        } ?: "▼ انتخاب حساب",
                         fontSize = 14.sp,
                         color = if (selectedAccount != null) IN_TEXT else IN_TEXT_LIGHT,
                         modifier = Modifier.weight(1f),
@@ -282,12 +261,16 @@ fun IncomeScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             // ─── مبلغ ───
-            IncomeInputField(
+            IncomeInputFieldTFV(
                 label = "مبلغ درآمد *",
-                value = amount,
-                onValueChange = { input ->
-                    val digitsOnly = input.filter { it.isDigit() }
-                    amount = if (digitsOnly.isEmpty()) "" else formatNumberWithCommaIN(digitsOnly)
+                value = amountTFV,
+                onValueChange = { newValue ->
+                    val digitsOnly = newValue.text.filter { it.isDigit() }
+                    val formatted = if (digitsOnly.isEmpty()) "" else formatNumberWithCommaIN(digitsOnly)
+                    amountTFV = TextFieldValue(
+                        text = formatted,
+                        selection = TextRange(formatted.length)
+                    )
                     if (amountError.isNotEmpty()) amountError = ""
                 },
                 placeholder = "0",
@@ -401,7 +384,7 @@ fun IncomeScreen(
         AlertDialog(
             onDismissRequest = { showAccountMenu = false },
             title = {
-                Text("💳 انتخاب کارت", fontWeight = FontWeight.Bold, color = IN_TEXT)
+                Text("💳 انتخاب حساب", fontWeight = FontWeight.Bold, color = IN_TEXT)
             },
             text = {
                 Column {
@@ -434,7 +417,7 @@ fun IncomeScreen(
         )
     }
 
-    // ─── منوی انتخاب/ورود دسته ───
+    // ─── منوی دسته ───
     if (showCategoryMenu) {
         var customCategory by remember { mutableStateOf("") }
 
@@ -444,9 +427,62 @@ fun IncomeScreen(
                 Text("🏷️ نوع درآمد", fontWeight = FontWeight.Bold, color = IN_TEXT)
             },
             text = {
-                Column(
-                    modifier = Modifier.verticalScroll(rememberScrollState())
-                ) {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        text = "✍️ نوشتن دسته دلخواه:",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = IN_TEXT,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                        textAlign = TextAlign.Right
+                    )
+
+                    OutlinedTextField(
+                        value = customCategory,
+                        onValueChange = { customCategory = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        singleLine = true,
+                        placeholder = {
+                            Text("مثلاً: پاداش", color = IN_TEXT_LIGHT.copy(alpha = 0.5f))
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = IN_SUCCESS_START,
+                            unfocusedBorderColor = Color(0xFFD0D7DE),
+                            focusedTextColor = IN_TEXT,
+                            unfocusedTextColor = IN_TEXT,
+                            cursorColor = IN_SUCCESS_START
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    TextButton(
+                        onClick = {
+                            if (customCategory.isNotBlank()) {
+                                category = customCategory.trim()
+                                categoryError = ""
+                                showCategoryMenu = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.textButtonColors(contentColor = IN_SUCCESS_END)
+                    ) {
+                        Text("✅ تأیید دسته دلخواه", fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(color = Color(0xFFE2EBF5))
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "یا از لیست انتخاب کن:",
+                        fontSize = 12.sp,
+                        color = IN_TEXT_LIGHT,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                        textAlign = TextAlign.Right
+                    )
+
                     INCOME_CATEGORIES.forEach { cat ->
                         Text(
                             text = "• $cat",
@@ -460,62 +496,19 @@ fun IncomeScreen(
                                     categoryError = ""
                                     showCategoryMenu = false
                                 }
-                                .padding(vertical = 12.dp),
+                                .padding(vertical = 10.dp),
                             textAlign = TextAlign.Right
                         )
                         HorizontalDivider(color = Color(0xFFE2EBF5))
                     }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Text(
-                        text = "✍️ یا خودت بنویس:",
-                        fontSize = 13.sp,
-                        color = IN_TEXT_LIGHT,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 8.dp),
-                        textAlign = TextAlign.Right
-                    )
-
-                    OutlinedTextField(
-                        value = customCategory,
-                        onValueChange = { customCategory = it },
-                        placeholder = { Text("مثلاً: پاداش", color = IN_TEXT_LIGHT.copy(alpha = 0.5f)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = IN_SUCCESS_START,
-                            unfocusedBorderColor = Color(0xFFD0D7DE),
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White,
-                            focusedTextColor = IN_TEXT,
-                            unfocusedTextColor = IN_TEXT,
-                            cursorColor = IN_SUCCESS_START
-                        )
-                    )
                 }
             },
             confirmButton = {
                 TextButton(
-                    onClick = {
-                        if (customCategory.isNotBlank()) {
-                            category = customCategory.trim()
-                            categoryError = ""
-                        }
-                        showCategoryMenu = false
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = IN_SUCCESS_END)
-                ) {
-                    Text("✅ تأیید", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(
                     onClick = { showCategoryMenu = false },
                     colors = ButtonDefaults.textButtonColors(contentColor = IN_TEXT_LIGHT)
                 ) {
-                    Text("❌ انصراف")
+                    Text("بستن")
                 }
             },
             containerColor = Color.White
@@ -523,9 +516,63 @@ fun IncomeScreen(
     }
 }
 
-// ─────────────────────────────────────────
-// فیلد ورودی
-// ─────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun IncomeInputFieldTFV(
+    label: String,
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    placeholder: String,
+    error: String,
+    keyboardType: KeyboardType = KeyboardType.Text
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = IN_TEXT,
+            modifier = Modifier.padding(bottom = 6.dp),
+            textAlign = TextAlign.Right
+        )
+
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = { Text(placeholder, color = IN_TEXT_LIGHT.copy(alpha = 0.5f)) },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            singleLine = true,
+            isError = error.isNotEmpty(),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = IN_SUCCESS_START,
+                unfocusedBorderColor = Color(0xFFD0D7DE),
+                focusedContainerColor = Color.White,
+                unfocusedContainerColor = Color.White,
+                errorBorderColor = IN_DANGER_START,
+                errorContainerColor = Color.White,
+                focusedTextColor = IN_TEXT,
+                unfocusedTextColor = IN_TEXT,
+                focusedPlaceholderColor = IN_TEXT_LIGHT.copy(alpha = 0.5f),
+                unfocusedPlaceholderColor = IN_TEXT_LIGHT.copy(alpha = 0.5f),
+                cursorColor = IN_SUCCESS_START,
+                errorCursorColor = IN_DANGER_START
+            )
+        )
+
+        if (error.isNotEmpty()) {
+            Text(
+                text = "❌ $error",
+                fontSize = 12.sp,
+                color = IN_DANGER_END,
+                modifier = Modifier.padding(top = 4.dp, start = 4.dp),
+                textAlign = TextAlign.Right
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IncomeInputField(
@@ -535,8 +582,7 @@ fun IncomeInputField(
     placeholder: String,
     error: String,
     keyboardType: KeyboardType = KeyboardType.Text,
-    singleLine: Boolean = true,
-    helperText: String = ""
+    singleLine: Boolean = true
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
@@ -581,21 +627,10 @@ fun IncomeInputField(
                 modifier = Modifier.padding(top = 4.dp, start = 4.dp),
                 textAlign = TextAlign.Right
             )
-        } else if (helperText.isNotEmpty()) {
-            Text(
-                text = helperText,
-                fontSize = 11.sp,
-                color = IN_TEXT_LIGHT,
-                modifier = Modifier.padding(top = 4.dp, start = 4.dp),
-                textAlign = TextAlign.Right
-            )
         }
     }
 }
 
-// ─────────────────────────────────────────
-// دکمه گرادیانی
-// ─────────────────────────────────────────
 @Composable
 fun IncomeGradientButton(
     icon: String,

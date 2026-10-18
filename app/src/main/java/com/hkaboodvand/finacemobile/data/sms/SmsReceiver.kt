@@ -59,18 +59,33 @@ class SmsReceiver : BroadcastReceiver() {
         if (parsed.isFailed || parsed.confidence < 50) return
         if (db.smsDao().isSmsExists(body, now) > 0) return
 
+        // ─── جستجوی mapping با الویت‌بندی دقیق ───
         var mapping: SmsMapping? = null
+
+        // اولویت ۱: شماره کارت (۴ رقم آخر) - دقیق‌ترین
         if (!parsed.cardLast4.isNullOrEmpty()) {
             mapping = db.smsDao().getMappingByCardLast4(parsed.cardLast4!!)
         }
+
+        // اولویت ۲: شماره حساب کامل
         if (mapping == null && !parsed.accountNumber.isNullOrEmpty()) {
             mapping = db.smsDao().getMappingByAccountNumber(parsed.accountNumber!!)
         }
-        if (mapping == null && parsed.bank != SmsParser.UNKNOWN_BANK) {
-            mapping = db.smsDao().getMappingByBankName(parsed.bank)
+
+        // اولویت ۳: ترکیب بانک + کارت (برای چند حساب از یک بانک)
+        if (mapping == null && !parsed.cardLast4.isNullOrEmpty() && parsed.bank != SmsParser.UNKNOWN_BANK) {
+            mapping = db.smsDao().getMappingByBankAndCard(parsed.bank, parsed.cardLast4!!)
         }
 
-        // ─── اصلاح مشکل ۱: شرط 85 ───
+        // اولویت ۴: فقط بانک (فقط اگر یک حساب از اون بانک باشه)
+        if (mapping == null && parsed.bank != SmsParser.UNKNOWN_BANK) {
+            val count = db.smsDao().countMappingsByBank(parsed.bank)
+            if (count == 1) {
+                mapping = db.smsDao().getMappingByBankName(parsed.bank)
+            }
+        }
+
+        // اگه mapping پیدا شد + اطمینان >= 85 → خودکار
         if (mapping != null && mapping.autoApprove &&
             parsed.confidence >= 85 &&
             parsed.amount != null &&
@@ -99,6 +114,7 @@ class SmsReceiver : BroadcastReceiver() {
             }
         }
 
+        // در غیر این صورت، توی صف بذار
         db.smsDao().insertSms(
             SmsQueue(
                 sender = sender, body = body, receivedAt = now, status = "pending",

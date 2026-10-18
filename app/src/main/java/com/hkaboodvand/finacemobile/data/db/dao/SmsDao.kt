@@ -53,6 +53,12 @@ interface SmsDao {
     @Query("SELECT * FROM sms_account_mapping WHERE bankName = :bankName AND autoApprove = 1 LIMIT 1")
     suspend fun getMappingByBankName(bankName: String): SmsMapping?
 
+    @Query("SELECT * FROM sms_account_mapping WHERE bankName = :bankName AND cardLast4 = :cardLast4 AND autoApprove = 1 LIMIT 1")
+    suspend fun getMappingByBankAndCard(bankName: String, cardLast4: String): SmsMapping?
+
+    @Query("SELECT COUNT(*) FROM sms_account_mapping WHERE bankName = :bankName AND autoApprove = 1")
+    suspend fun countMappingsByBank(bankName: String): Int
+
     @Query("SELECT * FROM sms_account_mapping ORDER BY createdAt DESC")
     fun getAllMappings(): Flow<List<SmsMapping>>
 

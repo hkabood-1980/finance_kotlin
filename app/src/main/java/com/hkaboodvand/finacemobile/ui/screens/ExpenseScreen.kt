@@ -21,8 +21,10 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,9 +36,7 @@ import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
 
-// ─────────────────────────────────────────
-// رنگ‌ها
-// ─────────────────────────────────────────
+// ─── رنگ‌ها ───
 val EX_DANGER_START = Color(0xFFE8908A)
 val EX_DANGER_END = Color(0xFFD97570)
 val EX_PRIMARY_START = Color(0xFF7EA6E0)
@@ -47,24 +47,13 @@ val EX_BG = Color(0xFFF0F4F8)
 val EX_TEXT = Color(0xFF1E293B)
 val EX_TEXT_LIGHT = Color(0xFF64748B)
 
-// لیست پیشنهادی هزینه‌ها
+// ─── دسته‌ها ───
 val EXPENSE_CATEGORIES = listOf(
-    "غذا",
-    "حمل و نقل",
-    "لباس",
-    "خانه",
-    "درمان",
-    "آموزش",
-    "سرگرمی",
-    "قبض و شارژ",
-    "هدیه",
-    "سفر",
-    "سایر"
+    "غذا", "حمل و نقل", "لباس", "خانه", "درمان",
+    "آموزش", "سرگرمی", "قبض و شارژ", "هدیه", "سفر", "سایر"
 )
 
-// ─────────────────────────────────────────
-// توابع فرمت اعداد
-// ─────────────────────────────────────────
+// ─── فرمت ───
 fun formatNumberWithCommaEX(input: String): String {
     if (input.isEmpty()) return ""
     val digitsOnly = input.filter { it.isDigit() }
@@ -99,33 +88,27 @@ fun ExpenseScreen(
     val repo = remember { FinanceRepository(db) }
     val prefs = remember { AppPreferences(context) }
 
-    // لیست کارت‌ها
     var accounts by remember { mutableStateOf<List<Account>>(emptyList()) }
     var selectedAccount by remember { mutableStateOf<Account?>(null) }
 
-    // فیلدهای فرم
-    var amount by remember { mutableStateOf("") }
+    // ─── مبلغ با TextFieldValue ───
+    var amountTFV by remember { mutableStateOf(TextFieldValue("")) }
     var category by remember { mutableStateOf("") }
     var place by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
 
-    // خطاها
     var accountError by remember { mutableStateOf("") }
     var amountError by remember { mutableStateOf("") }
     var categoryError by remember { mutableStateOf("") }
 
-    // State منوها
     var showAccountMenu by remember { mutableStateOf(false) }
     var showCategoryMenu by remember { mutableStateOf(false) }
 
-    // ID حساب پس‌انداز
     var savingsAccountId by remember { mutableStateOf<Long?>(null) }
-    // State برای دیالوگ تأیید پس‌انداز
     var showSavingsWarning by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // بارگذاری کارت‌ها
     LaunchedEffect(Unit) {
         repo.getAllAccounts().collect { list ->
             accounts = list
@@ -135,14 +118,12 @@ fun ExpenseScreen(
         }
     }
 
-    // بارگذاری savingsAccountId
     LaunchedEffect(Unit) {
         prefs.savingsAccountId.collect { id ->
             savingsAccountId = id
         }
     }
 
-    // اعتبارسنجی
     fun validateAll(): Boolean {
         var isValid = true
 
@@ -151,8 +132,8 @@ fun ExpenseScreen(
             isValid = false
         } else accountError = ""
 
-        val amountValue = parseFormattedNumberEX(amount).toDoubleOrNull()
-        if (amount.isBlank()) {
+        val amountValue = parseFormattedNumberEX(amountTFV.text).toDoubleOrNull()
+        if (amountTFV.text.isBlank()) {
             amountError = "مبلغ را وارد کنید"
             isValid = false
         } else if (amountValue == null || amountValue <= 0) {
@@ -171,11 +152,10 @@ fun ExpenseScreen(
         return isValid
     }
 
-    // تابع داخلی برای ثبت هزینه (بدون تأیید)
     fun performSaveExpense() {
         scope.launch {
             try {
-                val amountValue = parseFormattedNumberEX(amount).toDoubleOrNull() ?: 0.0
+                val amountValue = parseFormattedNumberEX(amountTFV.text).toDoubleOrNull() ?: 0.0
                 val account = selectedAccount ?: return@launch
 
                 val result = repo.registerTransaction(
@@ -202,13 +182,10 @@ fun ExpenseScreen(
         }
     }
 
-    // تابع اصلی (با تأیید پس‌انداز)
     fun saveExpense() {
         if (!validateAll()) return
 
         val account = selectedAccount ?: return
-
-        // اگه از حساب پس‌انداز خرج می‌کنه → تأیید بگیر
         if (savingsAccountId != null && account.id == savingsAccountId) {
             showSavingsWarning = true
             return
@@ -251,12 +228,11 @@ fun ExpenseScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
-
             Spacer(modifier = Modifier.height(8.dp))
 
             if (accounts.isEmpty()) {
                 Text(
-                    text = "⚠️ هنوز کارتی ثبت نکردی!\nاول از منوی «ثبت کارت» یه کارت اضافه کن.",
+                    text = "⚠️ هنوز حسابی ثبت نکردی!\nاول از منوی «ثبت حساب» یه حساب اضافه کن.",
                     fontSize = 14.sp,
                     color = EX_DANGER_END,
                     fontWeight = FontWeight.Bold,
@@ -270,7 +246,7 @@ fun ExpenseScreen(
 
             // ─── انتخاب کارت ───
             Text(
-                text = "انتخاب کارت *",
+                text = "انتخاب حساب *",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = EX_TEXT,
@@ -295,7 +271,7 @@ fun ExpenseScreen(
                     Text(
                         text = selectedAccount?.let {
                             "💳 ${it.name} (${it.bank})\n💰 ${formatMoneyEX(it.balance)}"
-                        } ?: "▼ انتخاب کارت",
+                        } ?: "▼ انتخاب حساب",
                         fontSize = 14.sp,
                         color = if (selectedAccount != null) EX_TEXT else EX_TEXT_LIGHT,
                         modifier = Modifier.weight(1f),
@@ -318,12 +294,16 @@ fun ExpenseScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             // ─── مبلغ ───
-            ExpenseInputField(
+            ExpenseInputFieldTFV(
                 label = "مبلغ هزینه *",
-                value = amount,
-                onValueChange = { input ->
-                    val digitsOnly = input.filter { it.isDigit() }
-                    amount = if (digitsOnly.isEmpty()) "" else formatNumberWithCommaEX(digitsOnly)
+                value = amountTFV,
+                onValueChange = { newValue ->
+                    val digitsOnly = newValue.text.filter { it.isDigit() }
+                    val formatted = if (digitsOnly.isEmpty()) "" else formatNumberWithCommaEX(digitsOnly)
+                    amountTFV = TextFieldValue(
+                        text = formatted,
+                        selection = TextRange(formatted.length)
+                    )
                     if (amountError.isNotEmpty()) amountError = ""
                 },
                 placeholder = "0",
@@ -437,7 +417,7 @@ fun ExpenseScreen(
         AlertDialog(
             onDismissRequest = { showAccountMenu = false },
             title = {
-                Text("💳 انتخاب کارت", fontWeight = FontWeight.Bold, color = EX_TEXT)
+                Text("💳 انتخاب حساب", fontWeight = FontWeight.Bold, color = EX_TEXT)
             },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
@@ -471,7 +451,7 @@ fun ExpenseScreen(
         )
     }
 
-    // ─── منوی انتخاب/ورود دسته ───
+    // ─── منوی دسته ───
     if (showCategoryMenu) {
         var customCategory by remember { mutableStateOf("") }
 
@@ -481,9 +461,62 @@ fun ExpenseScreen(
                 Text("🏷️ نوع هزینه", fontWeight = FontWeight.Bold, color = EX_TEXT)
             },
             text = {
-                Column(
-                    modifier = Modifier.verticalScroll(rememberScrollState())
-                ) {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        text = "✍️ نوشتن دسته دلخواه:",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = EX_TEXT,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                        textAlign = TextAlign.Right
+                    )
+
+                    OutlinedTextField(
+                        value = customCategory,
+                        onValueChange = { customCategory = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        singleLine = true,
+                        placeholder = {
+                            Text("مثلاً: تعمیرات", color = EX_TEXT_LIGHT.copy(alpha = 0.5f))
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = EX_DANGER_START,
+                            unfocusedBorderColor = Color(0xFFD0D7DE),
+                            focusedTextColor = EX_TEXT,
+                            unfocusedTextColor = EX_TEXT,
+                            cursorColor = EX_DANGER_START
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    TextButton(
+                        onClick = {
+                            if (customCategory.isNotBlank()) {
+                                category = customCategory.trim()
+                                categoryError = ""
+                                showCategoryMenu = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.textButtonColors(contentColor = EX_DANGER_END)
+                    ) {
+                        Text("✅ تأیید دسته دلخواه", fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(color = Color(0xFFE2EBF5))
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "یا از لیست انتخاب کن:",
+                        fontSize = 12.sp,
+                        color = EX_TEXT_LIGHT,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                        textAlign = TextAlign.Right
+                    )
+
                     EXPENSE_CATEGORIES.forEach { cat ->
                         Text(
                             text = "• $cat",
@@ -497,62 +530,19 @@ fun ExpenseScreen(
                                     categoryError = ""
                                     showCategoryMenu = false
                                 }
-                                .padding(vertical = 12.dp),
+                                .padding(vertical = 10.dp),
                             textAlign = TextAlign.Right
                         )
                         HorizontalDivider(color = Color(0xFFE2EBF5))
                     }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Text(
-                        text = "✍️ یا خودت بنویس:",
-                        fontSize = 13.sp,
-                        color = EX_TEXT_LIGHT,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 8.dp),
-                        textAlign = TextAlign.Right
-                    )
-
-                    OutlinedTextField(
-                        value = customCategory,
-                        onValueChange = { customCategory = it },
-                        placeholder = { Text("مثلاً: تعمیرات", color = EX_TEXT_LIGHT.copy(alpha = 0.5f)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = EX_DANGER_START,
-                            unfocusedBorderColor = Color(0xFFD0D7DE),
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White,
-                            focusedTextColor = EX_TEXT,
-                            unfocusedTextColor = EX_TEXT,
-                            cursorColor = EX_DANGER_START
-                        )
-                    )
                 }
             },
             confirmButton = {
                 TextButton(
-                    onClick = {
-                        if (customCategory.isNotBlank()) {
-                            category = customCategory.trim()
-                            categoryError = ""
-                        }
-                        showCategoryMenu = false
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = EX_DANGER_END)
-                ) {
-                    Text("✅ تأیید", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(
                     onClick = { showCategoryMenu = false },
                     colors = ButtonDefaults.textButtonColors(contentColor = EX_TEXT_LIGHT)
                 ) {
-                    Text("❌ انصراف")
+                    Text("بستن")
                 }
             },
             containerColor = Color.White
@@ -563,9 +553,7 @@ fun ExpenseScreen(
     if (showSavingsWarning) {
         AlertDialog(
             onDismissRequest = { showSavingsWarning = false },
-            icon = {
-                Text(text = "⚠️", fontSize = 40.sp)
-            },
+            icon = { Text(text = "⚠️", fontSize = 40.sp) },
             title = {
                 Text(
                     "توجه!",
@@ -585,14 +573,14 @@ fun ExpenseScreen(
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = "حساب پس‌انداز: ${selectedAccount?.name}\nمبلغ: $amount تومان",
+                        text = "حساب پس‌انداز: ${selectedAccount?.name}\nمبلغ: ${amountTFV.text} تومان",
                         fontSize = 13.sp,
                         color = EX_TEXT_LIGHT,
                         textAlign = TextAlign.Right
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = "آیا مطمئن هستید که می‌خواهید از پس‌انداز خود خرج کنید؟",
+                        text = "آیا مطمئن هستید؟",
                         fontSize = 13.sp,
                         color = EX_TEXT,
                         textAlign = TextAlign.Right
@@ -605,19 +593,15 @@ fun ExpenseScreen(
                         showSavingsWarning = false
                         performSaveExpense()
                     },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = EX_DANGER_END
-                    )
+                    colors = ButtonDefaults.textButtonColors(contentColor = EX_DANGER_END)
                 ) {
-                    Text("✅ بله، خرج کن", fontWeight = FontWeight.Bold)
+                    Text("✅ بله", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(
                     onClick = { showSavingsWarning = false },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = EX_SUCCESS_END
-                    )
+                    colors = ButtonDefaults.textButtonColors(contentColor = EX_SUCCESS_END)
                 ) {
                     Text("❌ انصراف", fontWeight = FontWeight.Bold)
                 }
@@ -627,9 +611,63 @@ fun ExpenseScreen(
     }
 }
 
-// ─────────────────────────────────────────
-// فیلد ورودی
-// ─────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ExpenseInputFieldTFV(
+    label: String,
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    placeholder: String,
+    error: String,
+    keyboardType: KeyboardType = KeyboardType.Text
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = EX_TEXT,
+            modifier = Modifier.padding(bottom = 6.dp),
+            textAlign = TextAlign.Right
+        )
+
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = { Text(placeholder, color = EX_TEXT_LIGHT.copy(alpha = 0.5f)) },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            singleLine = true,
+            isError = error.isNotEmpty(),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = EX_DANGER_START,
+                unfocusedBorderColor = Color(0xFFD0D7DE),
+                focusedContainerColor = Color.White,
+                unfocusedContainerColor = Color.White,
+                errorBorderColor = EX_DANGER_START,
+                errorContainerColor = Color.White,
+                focusedTextColor = EX_TEXT,
+                unfocusedTextColor = EX_TEXT,
+                focusedPlaceholderColor = EX_TEXT_LIGHT.copy(alpha = 0.5f),
+                unfocusedPlaceholderColor = EX_TEXT_LIGHT.copy(alpha = 0.5f),
+                cursorColor = EX_DANGER_START,
+                errorCursorColor = EX_DANGER_START
+            )
+        )
+
+        if (error.isNotEmpty()) {
+            Text(
+                text = "❌ $error",
+                fontSize = 12.sp,
+                color = EX_DANGER_END,
+                modifier = Modifier.padding(top = 4.dp, start = 4.dp),
+                textAlign = TextAlign.Right
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExpenseInputField(
@@ -639,8 +677,7 @@ fun ExpenseInputField(
     placeholder: String,
     error: String,
     keyboardType: KeyboardType = KeyboardType.Text,
-    singleLine: Boolean = true,
-    helperText: String = ""
+    singleLine: Boolean = true
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
@@ -685,21 +722,10 @@ fun ExpenseInputField(
                 modifier = Modifier.padding(top = 4.dp, start = 4.dp),
                 textAlign = TextAlign.Right
             )
-        } else if (helperText.isNotEmpty()) {
-            Text(
-                text = helperText,
-                fontSize = 11.sp,
-                color = EX_TEXT_LIGHT,
-                modifier = Modifier.padding(top = 4.dp, start = 4.dp),
-                textAlign = TextAlign.Right
-            )
         }
     }
 }
 
-// ─────────────────────────────────────────
-// دکمه گرادیانی
-// ─────────────────────────────────────────
 @Composable
 fun ExpenseGradientButton(
     icon: String,

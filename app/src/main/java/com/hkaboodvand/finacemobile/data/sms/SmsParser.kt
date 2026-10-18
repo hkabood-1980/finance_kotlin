@@ -3,19 +3,6 @@ package com.hkaboodvand.finacemobile.data.sms
 import java.math.BigDecimal
 import java.math.RoundingMode
 
-/**
- * پارسر پیامک بانکی (نسخه‌ی بازنویسی‌شده)
- *
- * تغییرات مهم نسبت به نسخه‌ی قبل:
- *  - لیست فرستنده‌های غیربانکی فقط روی «فرستنده» چک می‌شود (نه متن)؛ قبلاً خرید از اسنپ/دیجی‌کالا/شارژ ایرانسل رد می‌شد
- *  - تشخیص بانک با مرز کلمه؛ قبلاً «ملی» داخل «عملیات» پیدا می‌شد
- *  - نوع تراکنش از «نزدیک‌ترین کلمه‌ی کلیدی به مبلغ» یا علامت +/- تعیین می‌شود
- *    (قبلاً «دریافت‌کننده» در متن برداشت را «درآمد» می‌کرد)
- *  - تاریخ، ساعت، شماره کارت، شبا، کد پیگیری و مانده قبل از جستجوی مبلغ حذف می‌شوند
- *    (قبلاً ممکن بود شماره کارت یا سال به‌عنوان مبلغ برداشت شود)
- *  - پیامک ناموفق / برگشتی شناسایی می‌شود و confidence می‌دهد تا تأیید خودکار فقط روی موارد مطمئن انجام شود
- *  - مانده با علامت منفی هم پشتیبانی می‌شود
- */
 object SmsParser {
 
     const val TYPE_INCOME = "درآمد"
@@ -108,7 +95,8 @@ object SmsParser {
         "\\d[\\d,]*\\s*(?:ریال|تومان|irr|irt)" +
                 "|[+-]\\s*\\d{1,3}(?:,\\d{3})+" +
                 "|\\d{1,3}(?:,\\d{3})+[+-]" +
-                "|(?:مبلغ|واریز|برداشت|خرید|پرداخت|انتقال|کسر|مانده|موجودی)\\s*:?\\s*[+-]?\\s*\\d"
+                "|(?:مبلغ|واریز|برداشت|خرید|پرداخت|انتقال|کسر|مانده|موجودی)\\s*:?\\s*[+-]?\\s*\\d" +
+                "|^\\d{10,}$"
     )
 
     fun isBankSms(body: String, sender: String = ""): Boolean {
@@ -118,6 +106,12 @@ object SmsParser {
 
         if (NON_BANK_SENDERS.any { senderN.contains(it) }) return false
         if (NON_BANK_KEYWORDS.any { text.contains(it) }) return false
+
+        val hasAccountInFirstLine = text.lines().firstOrNull()?.let {
+            it.replace(" ", "").matches(Regex("^\\d{10,}$"))
+        } ?: false
+
+        if (hasAccountInFirstLine) return true
 
         val score = BANK_WORDS.count { text.contains(it) }
         if (score < 2) return false
@@ -202,6 +196,10 @@ object SmsParser {
         }
         SHORT_MASK.find(text)?.let { return CardInfo(null, it.groupValues[1]) }
         if (labeled != null) return CardInfo(null, labeled.takeLast(4))
+        val firstLine = text.lines().firstOrNull()?.trim() ?: ""
+        if (firstLine.matches(Regex("^\\d{10,}$"))) {
+            return CardInfo(firstLine, firstLine.takeLast(4))
+        }
         return CardInfo(null, null)
     }
 
@@ -244,6 +242,7 @@ object SmsParser {
     private val KEYWORD_AMOUNT = Regex(
         "(?<!$FA)($KW_ALT)\\s*:?\\s*([+-])?\\s*$NUM([+-])?(?:\\s*$UNIT)?"
     )
+    private val NUM_WITH_TRAILING_SIGN = Regex("$NUM-")
     private val SIGNED_LEAD = Regex("(?:^|\\s)([+-])\\s*$NUM(?:\\s*$UNIT)?")
     private val SIGNED_TRAIL = Regex("$NUM([+-])(?=\\s|\$)")
     private val UNIT_AMOUNT = Regex("$NUM\\s*$UNIT")
@@ -270,6 +269,10 @@ object SmsParser {
         for (m in KEYWORD_AMOUNT.findAll(work)) {
             val g = m.groupValues
             mk(g[3], g[5].ifEmpty { null }, signOf(g[2], g[4]), g[1], m.range.first)?.let { return it }
+        }
+        for (m in NUM_WITH_TRAILING_SIGN.findAll(work)) {
+            val numStr = m.value.dropLast(1)
+            mk(numStr, null, "-", null, m.range.first)?.let { return it }
         }
         for (m in SIGNED_LEAD.findAll(work)) {
             val g = m.groupValues
@@ -360,7 +363,7 @@ object SmsParser {
     }
 
     // =====================================================
-    // ۹. تشخیص بانک (همه‌ی بانک‌ها)
+    // ۹. تشخیص بانک
     // =====================================================
     private class BankDef(
         val name: String,
@@ -369,7 +372,6 @@ object SmsParser {
         val senderCodes: List<String> = emptyList(),
         val senderLatin: List<String> = emptyList()
     ) {
-        val aliasList = aliases
         val prefixed: List<Regex> = aliases.map {
             Regex("(?<!$FA)بانک\\s*${Regex.escape(it)}(?!$FA)")
         }
@@ -399,7 +401,8 @@ object SmsParser {
         BankDef("دی", nk("دی"), true),
         BankDef("کارآفرین", nk("کارآفرین"), false),
         BankDef("قوامین", nk("قوامین"), false),
-        BankDef("رسالت", nk("رسالت"), true)
+        BankDef("رسالت", nk("رسالت"), true),
+        BankDef("مهر اقتصاد", nk("مهر اقتصاد"), false, emptyList(), emptyList())
     )
 
     fun detectBank(sender: String, body: String): String {

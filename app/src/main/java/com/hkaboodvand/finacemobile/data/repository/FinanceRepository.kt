@@ -14,7 +14,6 @@ import com.hkaboodvand.finacemobile.data.db.entity.SmsQueue
 import kotlinx.coroutines.flow.first
 import com.hkaboodvand.finacemobile.data.sms.SmsParser
 
-
 class FinanceRepository(private val db: AppDatabase) {
 
     private val accountDao = db.accountDao()
@@ -350,7 +349,16 @@ class FinanceRepository(private val db: AppDatabase) {
         val allPending = db.smsDao().getPending().first()
         for (sms in allPending) {
             var isMatch = false
+
+            // ۱. با شماره کارت
             if (cardLast4.isNotEmpty() && sms.parsedCard == cardLast4) isMatch = true
+
+            // ۲. با شماره حساب (اگه توی متن پیامک باشه)
+            if (!isMatch && accountNumber.isNotEmpty()) {
+                if (sms.body.contains(accountNumber)) isMatch = true
+            }
+
+            // ۳. با بانک (اگه فقط یک حساب از اون بانک باشه)
             if (!isMatch && bankName.isNotEmpty()) {
                 val smsBank = SmsParser.detectBank(sms.sender, sms.body)
                 if (smsBank == bankName) isMatch = true
@@ -373,7 +381,6 @@ class FinanceRepository(private val db: AppDatabase) {
 
         return mappingId
     }
-
     // =====================================================
     // ویرایش تراکنش (برای ReportsScreen)
     // =====================================================

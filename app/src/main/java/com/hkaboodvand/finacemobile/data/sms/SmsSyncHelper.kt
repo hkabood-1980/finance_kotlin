@@ -25,7 +25,6 @@ object SmsSyncHelper {
         val currentTimestamp = System.currentTimeMillis()
         var lastTimestamp = prefs.lastSmsTimestamp.first()
 
-        // اگه اولین باره، از الان شروع کن
         if (lastTimestamp == null || lastTimestamp == 0L) {
             lastTimestamp = currentTimestamp
             prefs.setLastSmsTimestamp(lastTimestamp)
@@ -85,17 +84,31 @@ object SmsSyncHelper {
         if (db.smsDao().isSmsExists(body, now) > 0) return
 
         var mapping: SmsMapping? = null
+
+        // اولویت ۱: شماره کارت
         if (!parsed.cardLast4.isNullOrEmpty()) {
             mapping = db.smsDao().getMappingByCardLast4(parsed.cardLast4!!)
         }
+
+        // اولویت ۲: شماره حساب
         if (mapping == null && !parsed.accountNumber.isNullOrEmpty()) {
             mapping = db.smsDao().getMappingByAccountNumber(parsed.accountNumber!!)
         }
-        if (mapping == null && parsed.bank != SmsParser.UNKNOWN_BANK) {
-            mapping = db.smsDao().getMappingByBankName(parsed.bank)
+
+        // اولویت ۳: ترکیب بانک + کارت
+        if (mapping == null && !parsed.cardLast4.isNullOrEmpty() && parsed.bank != SmsParser.UNKNOWN_BANK) {
+            mapping = db.smsDao().getMappingByBankAndCard(parsed.bank, parsed.cardLast4!!)
         }
 
-        // ─── خودکار با اطمینان >= 85 ───
+        // اولویت ۴: فقط بانک (فقط اگر یک حساب باشه)
+        if (mapping == null && parsed.bank != SmsParser.UNKNOWN_BANK) {
+            val count = db.smsDao().countMappingsByBank(parsed.bank)
+            if (count == 1) {
+                mapping = db.smsDao().getMappingByBankName(parsed.bank)
+            }
+        }
+
+        // خودکار با اطمینان >= 85
         if (mapping != null && mapping.autoApprove &&
             parsed.confidence >= 85 &&
             parsed.amount != null &&

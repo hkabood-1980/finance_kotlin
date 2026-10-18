@@ -34,9 +34,6 @@ import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
 
-// ─────────────────────────────────────────
-// رنگ‌ها
-// ─────────────────────────────────────────
 val RP_INFO_START = Color(0xFFA692DC)
 val RP_INFO_END = Color(0xFF8B75C9)
 val RP_SUCCESS_START = Color(0xFF7ECBA1)
@@ -64,7 +61,6 @@ val CHART_COLORS = listOf(
     Color(0xFFD4A356)
 )
 
-// دسته‌های پیشنهادی
 val RP_EXPENSE_CATEGORIES = listOf(
     "غذا", "حمل و نقل", "لباس", "خانه", "درمان",
     "آموزش", "سرگرمی", "قبض و شارژ", "هدیه", "سفر", "سایر"
@@ -74,9 +70,6 @@ val RP_INCOME_CATEGORIES = listOf(
     "حقوق", "هدیه", "فروش", "سود بانکی", "اجاره", "فریلنس", "یارانه", "سایر"
 )
 
-// ─────────────────────────────────────────
-// توابع فرمت
-// ─────────────────────────────────────────
 fun formatMoneyRP(value: Double): String {
     val formatter = NumberFormat.getNumberInstance(Locale.US)
     return "${formatter.format(value.toLong())} تومان"
@@ -103,7 +96,6 @@ fun parseFormattedNumberRP(input: String): String {
     return input.filter { it.isDigit() }
 }
 
-// تبدیل تاریخ میلادی به شمسی
 fun gregorianToJalaliRP(gy: Int, gm: Int, gd: Int): Triple<Int, Int, Int> {
     val gDaysInMonth = intArrayOf(0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334)
     val gy2 = if (gm > 2) gy + 1 else gy
@@ -174,7 +166,7 @@ fun ReportsScreen(
     var accounts by remember { mutableStateOf<List<Account>>(emptyList()) }
 
     var selectedAccountId by remember { mutableStateOf<Long?>(null) }
-    var selectedType by remember { mutableStateOf("هزینه") }
+    var selectedType by remember { mutableStateOf("هزینه") } // "هزینه" / "درآمد" / "همه"
     var selectedRange by remember { mutableStateOf("ماه") }
     var selectedYear by remember { mutableStateOf(0) }
     var selectedMonth by remember { mutableStateOf(0) }
@@ -207,10 +199,10 @@ fun ReportsScreen(
         repo.getAllAccounts().collect { list -> accounts = list }
     }
 
-    // ─── فیلتر اصلی (با نوع) ───
+    // ─── فیلتر اصلی ───
     val filteredTransactions = allTransactions.filter { tx ->
         val accountOk = selectedAccountId == null || tx.accountId == selectedAccountId
-        val typeOk = tx.type == selectedType
+        val typeOk = selectedType == "همه" || tx.type == selectedType
         val rangeOk = when (selectedRange) {
             "ماه" -> {
                 val (y, m) = getJalaliYearMonthRP(tx.date)
@@ -222,8 +214,8 @@ fun ReportsScreen(
         accountOk && typeOk && rangeOk
     }
 
-    // ─── فیلتر بدون نوع (برای نمودار میله‌ای) ───
-    val rangeFilteredTransactions = allTransactions.filter { tx ->
+    // ─── برای نمودار میله‌ای (بدون فیلتر نوع و بدون موجودی اولیه) ───
+    val barChartIncome = allTransactions.filter { tx ->
         val accountOk = selectedAccountId == null || tx.accountId == selectedAccountId
         val rangeOk = when (selectedRange) {
             "ماه" -> {
@@ -233,8 +225,21 @@ fun ReportsScreen(
             "سال" -> getJalaliYearRP(tx.date) == selectedYear
             else -> true
         }
-        accountOk && rangeOk
-    }
+        accountOk && rangeOk && tx.type == "درآمد" && tx.category != "موجودی اولیه"
+    }.sumOf { it.amount }
+
+    val barChartExpense = allTransactions.filter { tx ->
+        val accountOk = selectedAccountId == null || tx.accountId == selectedAccountId
+        val rangeOk = when (selectedRange) {
+            "ماه" -> {
+                val (y, m) = getJalaliYearMonthRP(tx.date)
+                y == selectedYear && m == selectedMonth
+            }
+            "سال" -> getJalaliYearRP(tx.date) == selectedYear
+            else -> true
+        }
+        accountOk && rangeOk && tx.type == "هزینه"
+    }.sumOf { it.amount }
 
     val totalFiltered = filteredTransactions.sumOf { it.amount }
 
@@ -249,7 +254,7 @@ fun ReportsScreen(
         val prevYear = if (selectedMonth == 1) selectedYear - 1 else selectedYear
         allTransactions.filter { tx ->
             val accountOk = selectedAccountId == null || tx.accountId == selectedAccountId
-            val typeOk = tx.type == selectedType
+            val typeOk = selectedType == "همه" || tx.type == selectedType
             val (y, m) = getJalaliYearMonthRP(tx.date)
             accountOk && typeOk && y == prevYear && m == prevMonth
         }.sumOf { it.amount }
@@ -257,10 +262,6 @@ fun ReportsScreen(
 
     val totalIncome = filteredTransactions.filter { it.type == "درآمد" }.sumOf { it.amount }
     val totalExpense = filteredTransactions.filter { it.type == "هزینه" }.sumOf { it.amount }
-
-    // مقادیر نمودار میله‌ای (بدون فیلتر نوع)
-    val barChartIncome = rangeFilteredTransactions.filter { it.type == "درآمد" }.sumOf { it.amount }
-    val barChartExpense = rangeFilteredTransactions.filter { it.type == "هزینه" }.sumOf { it.amount }
 
     val monthNames = listOf(
         "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
@@ -337,7 +338,11 @@ fun ReportsScreen(
                             onClick = { showAccountMenu = true }
                         )
                         RPFilterButton(
-                            icon = if (selectedType == "هزینه") "💸" else "💵",
+                            icon = when (selectedType) {
+                                "هزینه" -> "💸"
+                                "درآمد" -> "💵"
+                                else -> "🌐"
+                            },
                             text = selectedType,
                             modifier = Modifier.weight(1f),
                             onClick = { showTypeMenu = true }
@@ -411,10 +416,11 @@ fun ReportsScreen(
                         .fillMaxWidth()
                         .background(
                             Brush.linearGradient(
-                                colors = if (selectedType == "هزینه")
-                                    listOf(RP_DANGER_START, RP_DANGER_END)
-                                else
-                                    listOf(RP_SUCCESS_START, RP_SUCCESS_END)
+                                colors = when (selectedType) {
+                                    "هزینه" -> listOf(RP_DANGER_START, RP_DANGER_END)
+                                    "درآمد" -> listOf(RP_SUCCESS_START, RP_SUCCESS_END)
+                                    else -> listOf(RP_INFO_START, RP_INFO_END)
+                                }
                             )
                         )
                         .padding(20.dp)
@@ -422,12 +428,16 @@ fun ReportsScreen(
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = if (selectedType == "هزینه") "💸" else "💵",
+                                text = when (selectedType) {
+                                    "هزینه" -> "💸"
+                                    "درآمد" -> "💵"
+                                    else -> "🌐"
+                                },
                                 fontSize = 24.sp
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                text = "${selectedType} کل",
+                                text = if (selectedType == "همه") "کل تراکنش‌ها" else "${selectedType} کل",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
@@ -458,9 +468,7 @@ fun ReportsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // ═══════════════════════════════════════
-            //  نمودار میله‌ای (بالای صفحه، هر دو)
-            // ═══════════════════════════════════════
+            // ─── نمودار میله‌ای ───
             RPBarChart(
                 totalIncome = barChartIncome,
                 totalExpense = barChartExpense
@@ -468,7 +476,7 @@ fun ReportsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // ─── نمودار دایره‌ای (پایین) ───
+            // ─── نمودار دایره‌ای ───
             if (byCategory.isNotEmpty() && totalFiltered > 0) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -481,7 +489,10 @@ fun ReportsScreen(
                             Text(text = "🥧", fontSize = 22.sp)
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                text = "$selectedType بر اساس دسته",
+                                text = when (selectedType) {
+                                    "همه" -> "همه تراکنش‌ها بر اساس دسته"
+                                    else -> "$selectedType بر اساس دسته"
+                                },
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = RP_TEXT
@@ -696,16 +707,20 @@ fun ReportsScreen(
         )
     }
 
-    // ─── منوی نوع ───
+    // ─── منوی نوع (با گزینه همه) ───
     if (showTypeMenu) {
         AlertDialog(
             onDismissRequest = { showTypeMenu = false },
             title = { Text("🏷️ انتخاب نوع", fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    listOf("هزینه", "درآمد").forEach { type ->
+                    listOf("همه", "هزینه", "درآمد").forEach { type ->
                         Text(
-                            text = if (type == "هزینه") "💸 هزینه" else "💵 درآمد",
+                            text = when (type) {
+                                "همه" -> "🌐 همه"
+                                "هزینه" -> "💸 هزینه"
+                                else -> "💵 درآمد"
+                            },
                             fontSize = 15.sp,
                             fontWeight = if (selectedType == type) FontWeight.Bold else FontWeight.Normal,
                             color = if (selectedType == type) RP_INFO_END else RP_TEXT,
@@ -918,9 +933,7 @@ fun ReportsScreen(
     }
 }
 
-// ─────────────────────────────────────────
-// نمودار میله‌ای درآمد/هزینه
-// ─────────────────────────────────────────
+// ─── نمودار میله‌ای ───
 @Composable
 fun RPBarChart(
     totalIncome: Double,
@@ -1075,9 +1088,7 @@ fun RPBarColumn(
     }
 }
 
-// ─────────────────────────────────────────
-// دیالوگ ویرایش تراکنش
-// ─────────────────────────────────────────
+// ─── دیالوگ ویرایش تراکنش ───
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RPEditTransactionDialog(
@@ -1435,9 +1446,6 @@ fun RPCategoryPickerDialog(
     )
 }
 
-// ─────────────────────────────────────────
-// دکمه‌های کمکی
-// ─────────────────────────────────────────
 @Composable
 fun RPFilterButton(
     icon: String,
@@ -1558,9 +1566,6 @@ fun RPSummaryRow(
     }
 }
 
-// ─────────────────────────────────────────
-// نمودار Donut
-// ─────────────────────────────────────────
 @Composable
 fun RPDonutChart(
     data: List<Float>,
@@ -1611,9 +1616,6 @@ fun RPDonutChart(
     }
 }
 
-// ─────────────────────────────────────────
-// ردیف تراکنش
-// ─────────────────────────────────────────
 @Composable
 fun RPTransactionRow(
     tx: Transaction,
