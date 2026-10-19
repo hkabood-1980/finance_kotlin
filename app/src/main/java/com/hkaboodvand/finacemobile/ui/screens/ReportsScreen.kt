@@ -21,8 +21,10 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -166,7 +168,7 @@ fun ReportsScreen(
     var accounts by remember { mutableStateOf<List<Account>>(emptyList()) }
 
     var selectedAccountId by remember { mutableStateOf<Long?>(null) }
-    var selectedType by remember { mutableStateOf("هزینه") } // "هزینه" / "درآمد" / "همه"
+    var selectedType by remember { mutableStateOf("هزینه") }
     var selectedRange by remember { mutableStateOf("ماه") }
     var selectedYear by remember { mutableStateOf(0) }
     var selectedMonth by remember { mutableStateOf(0) }
@@ -199,7 +201,6 @@ fun ReportsScreen(
         repo.getAllAccounts().collect { list -> accounts = list }
     }
 
-    // ─── فیلتر اصلی ───
     val filteredTransactions = allTransactions.filter { tx ->
         val accountOk = selectedAccountId == null || tx.accountId == selectedAccountId
         val typeOk = selectedType == "همه" || tx.type == selectedType
@@ -214,7 +215,6 @@ fun ReportsScreen(
         accountOk && typeOk && rangeOk
     }
 
-    // ─── برای نمودار میله‌ای (بدون فیلتر نوع و بدون موجودی اولیه) ───
     val barChartIncome = allTransactions.filter { tx ->
         val accountOk = selectedAccountId == null || tx.accountId == selectedAccountId
         val rangeOk = when (selectedRange) {
@@ -707,7 +707,7 @@ fun ReportsScreen(
         )
     }
 
-    // ─── منوی نوع (با گزینه همه) ───
+    // ─── منوی نوع ───
     if (showTypeMenu) {
         AlertDialog(
             onDismissRequest = { showTypeMenu = false },
@@ -933,7 +933,9 @@ fun ReportsScreen(
     }
 }
 
-// ─── نمودار میله‌ای ───
+// ─────────────────────────────────────────
+// نمودار میله‌ای درآمد/هزینه
+// ─────────────────────────────────────────
 @Composable
 fun RPBarChart(
     totalIncome: Double,
@@ -1088,7 +1090,9 @@ fun RPBarColumn(
     }
 }
 
-// ─── دیالوگ ویرایش تراکنش ───
+// ─────────────────────────────────────────
+// دیالوگ ویرایش تراکنش (با اصلاح باگ کاما)
+// ─────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RPEditTransactionDialog(
@@ -1100,9 +1104,18 @@ fun RPEditTransactionDialog(
 ) {
     var editType by remember { mutableStateOf(tx.type) }
     var editCategory by remember { mutableStateOf(tx.category) }
-    var editAmount by remember {
-        mutableStateOf(formatNumberWithCommaRP(tx.amount.toLong().toString()))
+
+    // ─── مبلغ با TextFieldValue ───
+    var editAmountTFV by remember {
+        val initialAmount = formatNumberWithCommaRP(tx.amount.toLong().toString())
+        mutableStateOf(
+            TextFieldValue(
+                text = initialAmount,
+                selection = TextRange(initialAmount.length)
+            )
+        )
     }
+
     var selectedAccount by remember {
         mutableStateOf(accounts.find { it.id == tx.accountId } ?: accounts.firstOrNull())
     }
@@ -1204,11 +1217,15 @@ fun RPEditTransactionDialog(
                     modifier = Modifier.padding(bottom = 6.dp)
                 )
                 OutlinedTextField(
-                    value = editAmount,
-                    onValueChange = { input ->
-                        val digitsOnly = input.filter { it.isDigit() }
-                        editAmount = if (digitsOnly.isEmpty()) ""
+                    value = editAmountTFV,
+                    onValueChange = { newValue ->
+                        val digitsOnly = newValue.text.filter { it.isDigit() }
+                        val formatted = if (digitsOnly.isEmpty()) ""
                         else formatNumberWithCommaRP(digitsOnly)
+                        editAmountTFV = TextFieldValue(
+                            text = formatted,
+                            selection = TextRange(formatted.length)
+                        )
                     },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
@@ -1261,7 +1278,7 @@ fun RPEditTransactionDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    val amount = parseFormattedNumberRP(editAmount).toDoubleOrNull() ?: 0.0
+                    val amount = parseFormattedNumberRP(editAmountTFV.text).toDoubleOrNull() ?: 0.0
                     val account = selectedAccount ?: return@TextButton
                     if (amount <= 0) return@TextButton
                     onSave(

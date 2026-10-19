@@ -13,8 +13,8 @@ android {
         applicationId = "com.hkaboodvand.finacemobile"
         minSdk = 29
         targetSdk = 34
-        versionCode = 4
-        versionName = "2.5"
+        versionCode = 5
+        versionName = "2.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
