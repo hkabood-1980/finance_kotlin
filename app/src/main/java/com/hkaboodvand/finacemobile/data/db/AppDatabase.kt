@@ -20,7 +20,7 @@ import com.hkaboodvand.finacemobile.data.db.entity.Transaction
         SmsMapping::class
     ],
     version = 2,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
 

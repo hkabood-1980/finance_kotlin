@@ -18,6 +18,8 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
+
+
         lint {
             checkReleaseBuilds = false
             abortOnError = false
@@ -32,6 +34,9 @@ android {
                 "proguard-rules.pro"
             )
         }
+    }
+ksp {
+        arg("room.schemaLocation", "$projectDir/schemas")
     }
 
     compileOptions {
