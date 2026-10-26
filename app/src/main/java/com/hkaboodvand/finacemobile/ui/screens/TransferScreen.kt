@@ -21,8 +21,10 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -86,48 +88,39 @@ fun TransferScreen(
     val repo = remember { FinanceRepository(db) }
     val prefs = remember { AppPreferences(context) }
 
-    // لیست کارت‌ها
     var accounts by remember { mutableStateOf<List<Account>>(emptyList()) }
 
-    // کارت مبدأ و مقصد
     var sourceAccount by remember { mutableStateOf<Account?>(null) }
     var destAccount by remember { mutableStateOf<Account?>(null) }
 
-    // فیلدها
-    var amount by remember { mutableStateOf("") }
+    // ─── مبلغ با TextFieldValue ───
+    var amountTFV by remember { mutableStateOf(TextFieldValue("")) }
     var description by remember { mutableStateOf("") }
 
-    // خطاها
     var sourceError by remember { mutableStateOf("") }
     var destError by remember { mutableStateOf("") }
     var amountError by remember { mutableStateOf("") }
 
-    // State منوها
     var showSourceMenu by remember { mutableStateOf(false) }
     var showDestMenu by remember { mutableStateOf(false) }
 
-    // ID حساب پس‌انداز
     var savingsAccountId by remember { mutableStateOf<Long?>(null) }
-    // State برای دیالوگ تأیید پس‌انداز
     var showSavingsWarning by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // بارگذاری کارت‌ها
     LaunchedEffect(Unit) {
         repo.getAllAccounts().collect { list ->
             accounts = list
         }
     }
 
-    // بارگذاری savingsAccountId
     LaunchedEffect(Unit) {
         prefs.savingsAccountId.collect { id ->
             savingsAccountId = id
         }
     }
 
-    // اعتبارسنجی
     fun validateAll(): Boolean {
         var isValid = true
 
@@ -144,8 +137,8 @@ fun TransferScreen(
             isValid = false
         } else destError = ""
 
-        val amountValue = parseFormattedNumberTR(amount).toDoubleOrNull()
-        if (amount.isBlank()) {
+        val amountValue = parseFormattedNumberTR(amountTFV.text).toDoubleOrNull()
+        if (amountTFV.text.isBlank()) {
             amountError = "مبلغ را وارد کنید"
             isValid = false
         } else if (amountValue == null || amountValue <= 0) {
@@ -159,11 +152,10 @@ fun TransferScreen(
         return isValid
     }
 
-    // تابع داخلی برای ثبت انتقال (بدون تأیید)
     fun performSaveTransfer() {
         scope.launch {
             try {
-                val amountValue = parseFormattedNumberTR(amount).toDoubleOrNull() ?: 0.0
+                val amountValue = parseFormattedNumberTR(amountTFV.text).toDoubleOrNull() ?: 0.0
                 val source = sourceAccount ?: return@launch
                 val dest = destAccount ?: return@launch
 
@@ -189,13 +181,10 @@ fun TransferScreen(
         }
     }
 
-    // تابع اصلی (با تأیید پس‌انداز)
     fun saveTransfer() {
         if (!validateAll()) return
 
         val source = sourceAccount ?: return
-
-        // اگه از حساب پس‌انداز خارج می‌شه → تأیید بگیر
         if (savingsAccountId != null && source.id == savingsAccountId) {
             showSavingsWarning = true
             return
@@ -209,7 +198,7 @@ fun TransferScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "🔁 انتقال بین کارت‌ها",
+                        "🔁 انتقال بین حساب‌ها",
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
@@ -236,7 +225,6 @@ fun TransferScreen(
                 .padding(padding)
                 .background(TR_BG)
         ) {
-            // ─── اگه کمتر از ۲ کارت ───
             if (accounts.size < 2) {
                 Column(
                     modifier = Modifier
@@ -248,7 +236,7 @@ fun TransferScreen(
                     Text(text = "🔁", fontSize = 72.sp)
                     Spacer(modifier = Modifier.height(24.dp))
                     Text(
-                        text = "شما فقط ${accounts.size} کارت ثبت کرده‌اید",
+                        text = "شما فقط ${accounts.size} حساب ثبت کرده‌اید",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = TR_TEXT,
@@ -256,14 +244,13 @@ fun TransferScreen(
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "برای انتقال، حداقل ۲ کارت لازم است.",
+                        text = "برای انتقال، حداقل ۲ حساب لازم است.",
                         fontSize = 14.sp,
                         color = TR_TEXT_LIGHT,
                         textAlign = TextAlign.Center
                     )
                 }
             } else {
-                // ─── فرم انتقال ───
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -274,7 +261,7 @@ fun TransferScreen(
 
                     // ─── کارت مبدأ ───
                     Text(
-                        text = "از کارت (مبدأ) *",
+                        text = "از حساب (مبدأ) *",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = TR_TEXT,
@@ -299,7 +286,7 @@ fun TransferScreen(
                             Text(
                                 text = sourceAccount?.let {
                                     "💳 ${it.name} (${it.bank})\n💰 ${formatMoneyTR(it.balance)}"
-                                } ?: "▼ انتخاب کارت مبدأ",
+                                } ?: "▼ انتخاب حساب مبدأ",
                                 fontSize = 14.sp,
                                 color = if (sourceAccount != null) TR_TEXT else TR_TEXT_LIGHT,
                                 modifier = Modifier.weight(1f),
@@ -323,7 +310,7 @@ fun TransferScreen(
 
                     // ─── کارت مقصد ───
                     Text(
-                        text = "به کارت (مقصد) *",
+                        text = "به حساب (مقصد) *",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = TR_TEXT,
@@ -348,7 +335,7 @@ fun TransferScreen(
                             Text(
                                 text = destAccount?.let {
                                     "💳 ${it.name} (${it.bank})\n💰 ${formatMoneyTR(it.balance)}"
-                                } ?: "▼ انتخاب کارت مقصد",
+                                } ?: "▼ انتخاب حساب مقصد",
                                 fontSize = 14.sp,
                                 color = if (destAccount != null) TR_TEXT else TR_TEXT_LIGHT,
                                 modifier = Modifier.weight(1f),
@@ -370,13 +357,18 @@ fun TransferScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // ─── مبلغ ───
-                    TransferInputField(
+                    // ─── مبلغ (با TextFieldValue) ───
+                    TransferInputFieldTFV(
                         label = "مبلغ انتقال *",
-                        value = amount,
-                        onValueChange = { input ->
-                            val digitsOnly = input.filter { it.isDigit() }
-                            amount = if (digitsOnly.isEmpty()) "" else formatNumberWithCommaTR(digitsOnly)
+                        value = amountTFV,
+                        onValueChange = { newValue ->
+                            val digitsOnly = newValue.text.filter { it.isDigit() }
+                            val formatted = if (digitsOnly.isEmpty()) ""
+                            else formatNumberWithCommaTR(digitsOnly)
+                            amountTFV = TextFieldValue(
+                                text = formatted,
+                                selection = TextRange(formatted.length)
+                            )
                             if (amountError.isNotEmpty()) amountError = ""
                         },
                         placeholder = "0",
@@ -432,7 +424,7 @@ fun TransferScreen(
         AlertDialog(
             onDismissRequest = { showSourceMenu = false },
             title = {
-                Text("💳 انتخاب کارت مبدأ", fontWeight = FontWeight.Bold, color = TR_TEXT)
+                Text("💳 انتخاب حساب مبدأ", fontWeight = FontWeight.Bold, color = TR_TEXT)
             },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
@@ -471,7 +463,7 @@ fun TransferScreen(
         AlertDialog(
             onDismissRequest = { showDestMenu = false },
             title = {
-                Text("💳 انتخاب کارت مقصد", fontWeight = FontWeight.Bold, color = TR_TEXT)
+                Text("💳 انتخاب حساب مقصد", fontWeight = FontWeight.Bold, color = TR_TEXT)
             },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
@@ -508,9 +500,7 @@ fun TransferScreen(
     if (showSavingsWarning) {
         AlertDialog(
             onDismissRequest = { showSavingsWarning = false },
-            icon = {
-                Text(text = "⚠️", fontSize = 40.sp)
-            },
+            icon = { Text(text = "⚠️", fontSize = 40.sp) },
             title = {
                 Text(
                     "توجه!",
@@ -530,14 +520,14 @@ fun TransferScreen(
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = "حساب پس‌انداز: ${sourceAccount?.name}\nمبلغ: $amount تومان",
+                        text = "حساب پس‌انداز: ${sourceAccount?.name}\nمبلغ: ${amountTFV.text} تومان",
                         fontSize = 13.sp,
                         color = TR_TEXT_LIGHT,
                         textAlign = TextAlign.Right
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = "آیا مطمئن هستید که می‌خواهید از پس‌انداز خود انتقال دهید؟",
+                        text = "آیا مطمئن هستید؟",
                         fontSize = 13.sp,
                         color = TR_TEXT,
                         textAlign = TextAlign.Right
@@ -550,9 +540,7 @@ fun TransferScreen(
                         showSavingsWarning = false
                         performSaveTransfer()
                     },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = TR_DANGER_END
-                    )
+                    colors = ButtonDefaults.textButtonColors(contentColor = TR_DANGER_END)
                 ) {
                     Text("✅ بله، انتقال بده", fontWeight = FontWeight.Bold)
                 }
@@ -560,9 +548,7 @@ fun TransferScreen(
             dismissButton = {
                 TextButton(
                     onClick = { showSavingsWarning = false },
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = TR_SUCCESS_END
-                    )
+                    colors = ButtonDefaults.textButtonColors(contentColor = TR_SUCCESS_END)
                 ) {
                     Text("❌ انصراف", fontWeight = FontWeight.Bold)
                 }
@@ -573,7 +559,67 @@ fun TransferScreen(
 }
 
 // ─────────────────────────────────────────
-// فیلد ورودی
+// فیلد ورودی با TextFieldValue
+// ─────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TransferInputFieldTFV(
+    label: String,
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    placeholder: String,
+    error: String,
+    keyboardType: KeyboardType = KeyboardType.Text
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = TR_TEXT,
+            modifier = Modifier.padding(bottom = 6.dp),
+            textAlign = TextAlign.Right
+        )
+
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = { Text(placeholder, color = TR_TEXT_LIGHT.copy(alpha = 0.5f)) },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            singleLine = true,
+            isError = error.isNotEmpty(),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = TR_WARNING_START,
+                unfocusedBorderColor = Color(0xFFD0D7DE),
+                focusedContainerColor = Color.White,
+                unfocusedContainerColor = Color.White,
+                errorBorderColor = TR_DANGER_START,
+                errorContainerColor = Color.White,
+                focusedTextColor = TR_TEXT,
+                unfocusedTextColor = TR_TEXT,
+                focusedPlaceholderColor = TR_TEXT_LIGHT.copy(alpha = 0.5f),
+                unfocusedPlaceholderColor = TR_TEXT_LIGHT.copy(alpha = 0.5f),
+                cursorColor = TR_WARNING_START,
+                errorCursorColor = TR_DANGER_START
+            )
+        )
+
+        if (error.isNotEmpty()) {
+            Text(
+                text = "❌ $error",
+                fontSize = 12.sp,
+                color = TR_DANGER_END,
+                modifier = Modifier.padding(top = 4.dp, start = 4.dp),
+                textAlign = TextAlign.Right
+            )
+        }
+    }
+}
+
+// ─────────────────────────────────────────
+// فیلد ورودی معمولی (String)
 // ─────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -634,7 +680,7 @@ fun TransferInputField(
 }
 
 // ─────────────────────────────────────────
-// دکمه گرادیانی
+// دکمه‌ی گرادیانی
 // ─────────────────────────────────────────
 @Composable
 fun TransferGradientButton(

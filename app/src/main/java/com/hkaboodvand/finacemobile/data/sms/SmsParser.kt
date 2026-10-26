@@ -70,7 +70,7 @@ object SmsParser {
         src.replaceRange(r, " ".repeat(r.last - r.first + 1))
 
     // =====================================================
-    // ۱. تشخیص پیامک بانکی (با اولویت کلمه «مانده»)
+    // ۱. تشخیص پیامک بانکی
     // =====================================================
     private val NON_BANK_SENDERS = nk(
         "ایرانسل", "همراه اول", "رایتل", "شاتل", "آسیاتک",
@@ -88,14 +88,15 @@ object SmsParser {
     private val BANK_WORDS = nk(
         "بانک", "حساب", "کارت", "مانده", "موجودی",
         "واریز", "برداشت", "بستانکار", "بدهکار",
-        "خرید", "پرداخت", "انتقال", "ریال", "تومان"
+        "خرید", "پرداخت", "پرداخت قبض", "قبض", "انتقال", "ریال", "تومان"
     )
 
     private val MONEY_HINT = Regex(
         "\\d[\\d,]*\\s*(?:ریال|تومان|irr|irt)" +
                 "|[+-]\\s*\\d{1,3}(?:,\\d{3})+" +
                 "|\\d{1,3}(?:,\\d{3})+[+-]" +
-                "|(?:مبلغ|واریز|برداشت|خرید|پرداخت|انتقال|کسر|مانده|موجودی)\\s*:?\\s*[+-]?\\s*\\d"
+                "|(?:مبلغ|واریز|برداشت|خرید|پرداخت|انتقال|کسر|مانده|موجودی)\\s*:?\\s*[+-]?\\s*\\d" +
+                "|^\\d{10,}$"
     )
 
     fun isBankSms(body: String, sender: String = ""): Boolean {
@@ -106,24 +107,24 @@ object SmsParser {
         if (NON_BANK_SENDERS.any { senderN.contains(it) }) return false
         if (NON_BANK_KEYWORDS.any { text.contains(it) }) return false
 
-        // ─── اولویت ۱: کلمه «مانده» یا «موجودی» (مطمئن‌ترین نشانه) ───
+        // اولویت ۱: کلمه «مانده» یا «موجودی» (مطمئن‌ترین نشانه)
         if (text.contains("مانده") || text.contains("موجودی")) {
             if (Regex("[\\d,]+").containsMatchIn(text)) return true
         }
 
-        // ─── اولویت ۲: شماره حساب طولانی در خط اول ───
+        // اولویت ۲: شماره حساب طولانی در خط اول
         val hasAccountInFirstLine = text.lines().firstOrNull()?.let {
             val cleaned = it.replace(" ", "").replace(".", "")
             cleaned.matches(Regex("^\\d{9,}$"))
         } ?: false
         if (hasAccountInFirstLine) return true
 
-        // ─── اولویت ۳: مبلغ با علامت + یا - ───
+        // اولویت ۳: مبلغ با علامت + یا -
         val hasSignedAmount = Regex("(?:^|\\s)([+-])\\s*[\\d,]+").containsMatchIn(text) ||
                 Regex("[\\d,]+\\s*([+-])(?:\\s|$)").containsMatchIn(text)
         if (hasSignedAmount) return true
 
-        // ─── اولویت ۴: بر اساس کلمات کلیدی ───
+        // اولویت ۴: بر اساس کلمات کلیدی
         val score = BANK_WORDS.count { text.contains(it) }
         if (score < 2) return false
         return MONEY_HINT.containsMatchIn(text) || score >= 3
@@ -168,9 +169,10 @@ object SmsParser {
                 "\\s*(?:کارت|حساب|پیگیری|مرجع)?\\s*:?\\s*\\d{4,}(?![\\d,])(?!\\s*(?:ریال|تومان))"
     )
     private val LONG_DIGITS = Regex("(?<![\\d,.])\\d{10,}(?![\\d,])")
-    // الگوی شماره حساب با پشتیبانی از نقطه
+
+    // الگوی شماره حساب/کارت (با پشتیبانی از نقطه و ستاره)
     private val LABELED_ACCT = Regex(
-        "(?<!$FA)(?:کارت|حساب|سپرده)\\s*(?:شماره\\s*)?:?\\s*([\\d.]+)(?![\\d,*•#×x-])(?!\\s*(?:ریال|تومان))"
+        "(?<!$FA)(?:کارت|حساب|سپرده)\\s*(?:شماره\\s*)?:?\\s*([\\d.*•#×x]+)(?![\\d,*•#×x-])(?!\\s*(?:ریال|تومان))"
     )
 
     private fun maskCount(s: String) = s.count { it == '*' || it == '•' || it == '#' || it == '×' || it == 'x' }
@@ -191,41 +193,36 @@ object SmsParser {
     }
 
     // =====================================================
-    // ۴. کارت / حساب (با پشتیبانی از نقطه)
+    // ۴. کارت / حساب (با پشتیبانی از نقطه و ستاره)
     // =====================================================
     private data class CardInfo(val accountNumber: String?, val last4: String?)
 
     private fun extractCard(text: String): CardInfo {
-        // ۱) شماره کارت کامل ۱۶ رقمی (با Luhn یا برچسب «کارت»)
         for (m in CARD_16.findAll(text)) {
             val digits = m.value.filter { it.isDigit() }
             val before = text.substring(maxOf(0, m.range.first - 12), m.range.first)
             if (luhn(digits) || before.contains("کارت")) return CardInfo(digits, digits.takeLast(4))
         }
 
-        // ۲) شماره حساب با برچسب (با پشتیبانی از نقطه)
         val labeledRaw = LABELED_ACCT.find(text)?.groupValues?.get(1)
         if (labeledRaw != null) {
-            val cleaned = labeledRaw.replace(".", "")
-            if (cleaned.length >= 9) {
+            val cleaned = labeledRaw.replace(".", "").replace("*", "")
+            if (cleaned.length >= 4) {
                 return CardInfo(cleaned, cleaned.takeLast(4))
             }
         }
 
-        // ۳) کارت ماسک‌شده مثل 6037-99**-****-7890
         for (m in MASKED_TOKEN.findAll(text)) {
             if (maskCount(m.value) >= 2) return CardInfo(null, m.value.takeLast(4))
         }
 
         SHORT_MASK.find(text)?.let { return CardInfo(null, it.groupValues[1]) }
 
-        // ۴) عدد کوتاه با برچسب
         if (labeledRaw != null) {
-            val cleaned = labeledRaw.replace(".", "")
+            val cleaned = labeledRaw.replace(".", "").replace("*", "")
             return CardInfo(null, cleaned.takeLast(4))
         }
 
-        // ۵) شماره حساب بدون برچسب در خط اول (با پشتیبانی از نقطه)
         val firstLine = text.lines().firstOrNull()?.trim() ?: ""
         val cleanedFirstLine = firstLine.replace(".", "").replace(" ", "")
         if (cleanedFirstLine.matches(Regex("^\\d{9,}$"))) {
@@ -255,7 +252,7 @@ object SmsParser {
     }
 
     // =====================================================
-    // ۶. مبلغ (با پشتیبانی از همه‌ی کلمات کلیدی)
+    // ۶. مبلغ (با اولویت‌های دقیق)
     // =====================================================
     private data class AmountHit(
         val rial: BigDecimal,
@@ -267,6 +264,11 @@ object SmsParser {
 
     private const val KW_ALT =
         "واریزی|واریز|برداشت|خرید|خرید اینترنتی|خرید از پوز|خرید از پایانه|پایانه فروش|پرداخت|پرداخت قبض|انتقال|انتقال از|انتقال به|انتقال پایا|پایا|انتقال پل|پل|کسر|افزایش|دریافت|بستانکار|بدهکار|هزینه|کارت"
+
+    // ۱. الگوی اختصاصی "پرداخت قبض19,000" (چسبیده)
+    private val BILL_PAYMENT_AMOUNT = Regex(
+        "(?:پرداخت\\s*قبض|قبض)\\s*:?\\s*([+-])?\\s*$NUM([+-])?(?:\\s*$UNIT)?"
+    )
 
     private val LABEL_AMOUNT = Regex(
         "(?:مبلغ|مقدار)\\s*:?\\s*([+-])?\\s*$NUM([+-])?(?:\\s*$UNIT)?"
@@ -284,7 +286,6 @@ object SmsParser {
         "(?<!$FA)($KW_ALT)(?:[^\\d\\n]{0,32})?\\s*:?\\s*([+-])?\\s*$NUM([+-])?(?:\\s*$UNIT)?"
     )
 
-    // مبلغ با علامت در آخر (مثل `6,080,000-` یا `30,000,000+`)
     private val NUM_WITH_TRAILING_SIGN = Regex("$NUM([+-])(?=\\s|\n|\$)")
     private val SIGNED_LEAD = Regex("(?:^|\\s)([+-])\\s*$NUM(?:\\s*$UNIT)?")
     private val UNIT_AMOUNT = Regex("$NUM\\s*$UNIT")
@@ -304,30 +305,42 @@ object SmsParser {
     }
 
     private fun findAmount(work: String): AmountHit? {
+        // ۰. اولویت مخصوص برای «پرداخت قبض» (چسبیده به مبلغ)
+        for (m in BILL_PAYMENT_AMOUNT.findAll(work)) {
+            val g = m.groupValues
+            mk(g[2], g[4].ifEmpty { null }, signOf(g[1], g[3]), "پرداخت قبض", m.range.first)?.let { return it }
+        }
+        // ۱. الگوی بانک سپه
         for (m in TERMINAL_SALE_AMOUNT.findAll(work)) {
             val g = m.groupValues
             mk(g[2], g[4].ifEmpty { null }, signOf(g[1], g[3]), "خرید", m.range.first)?.let { return it }
         }
+        // ۲. مبلغ با برچسب «مبلغ»
         for (m in LABEL_AMOUNT.findAll(work)) {
             val g = m.groupValues
             mk(g[2], g[4].ifEmpty { null }, signOf(g[1], g[3]), null, m.range.first)?.let { return it }
         }
+        // ۳. کلمه کلیدی + مبلغ بدون فاصله
         for (m in KEYWORD_AMOUNT.findAll(work)) {
             val g = m.groupValues
             mk(g[3], g[5].ifEmpty { null }, signOf(g[2], g[4]), g[1], m.range.first)?.let { return it }
         }
+        // ۴. کلمه کلیدی + فاصله + مبلغ
         for (m in ACTION_AMOUNT.findAll(work)) {
             val g = m.groupValues
             mk(g[3], g[5].ifEmpty { null }, signOf(g[2], g[4]), g[1], m.range.first)?.let { return it }
         }
+        // ۵. مبلغ با علامت در آخر
         for (m in NUM_WITH_TRAILING_SIGN.findAll(work)) {
             val g = m.groupValues
             mk(g[1], null, g[2], null, m.range.first)?.let { return it }
         }
+        // ۶. مبلغ با علامت در ابتدا
         for (m in SIGNED_LEAD.findAll(work)) {
             val g = m.groupValues
             mk(g[2], g[3].ifEmpty { null }, g[1], null, m.range.first)?.let { return it }
         }
+        // ۷. مبلغ با واحد
         for (m in UNIT_AMOUNT.findAll(work)) {
             val g = m.groupValues
             mk(g[1], g[2], null, null, m.range.first)?.let { return it }
@@ -436,7 +449,8 @@ object SmsParser {
         BankDef("پارسیان", nk("پارسیان"), false, emptyList(), listOf("parsian")),
         BankDef("سامان", nk("سامان"), true, emptyList(), listOf("saman")),
         BankDef("تجارت", nk("تجارت"), false, listOf("98300020"), listOf("tejarat")),
-        BankDef("کشاورزی", nk("کشاورزی"), false, listOf("98300016"), listOf("keshavarzi")),
+        // اینجا bki.ir اضافه شد
+        BankDef("کشاورزی", nk("کشاورزی"), false, listOf("98300016"), listOf("keshavarzi", "bki")),
         BankDef("رفاه", nk("رفاه"), true, listOf("98300013"), listOf("refah")),
         BankDef("اقتصاد نوین", nk("اقتصاد نوین"), false, emptyList(), listOf("enbank", "eghtesad")),
         BankDef("پست بانک", nk("پست بانک"), false, emptyList(), listOf("postbank")),
@@ -482,6 +496,11 @@ object SmsParser {
 
         for (b in BANKS) if (!b.needsPrefix && b.bare.any { it.containsMatchIn(text) }) return b.name
 
+        // چک کردن لاتین در متن (برای bki.ir)
+        for (b in BANKS) {
+            if (b.senderLatin.any { text.contains(it) }) return b.name
+        }
+
         return UNKNOWN_BANK
     }
 
@@ -500,6 +519,7 @@ object SmsParser {
         val dateTime = extractDateTime(text)
 
         var work = text
+        // اگر مانده پیدا شد، از متن حذفش می‌کنیم تا با مبلغ اشتباه نشود
         balance?.let { work = blankRange(work, it.range) }
         work = blankAll(work, DATE_RE)
         work = blankAll(work, TIME_RE)

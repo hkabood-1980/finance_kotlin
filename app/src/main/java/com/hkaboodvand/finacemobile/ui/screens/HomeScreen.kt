@@ -8,18 +8,21 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -32,44 +35,42 @@ import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
 
-
 // ─────────────────────────────────────────
-// رنگ‌ها
+// رنگ‌های برنامه (نسخه اختصاصی شما)
 // ─────────────────────────────────────────
-// ─────────────────────────────────────────
-// رنگ‌ها — نسخه ملایم (Pastel)
-// ─────────────────────────────────────────
-val COLOR_PRIMARY_START = Color(0xFF2196F3)
-val COLOR_PRIMARY_END = Color(0xFF5B8DD9)
+val COLOR_PRIMARY_START = Color(0xFF3B82F6)
+val COLOR_PRIMARY_END = Color(0xFF2563EB)
 
-val COLOR_SUCCESS_START = Color(0xFF6CD29A)
-val COLOR_SUCCESS_END = Color(0xFF5BB88A)
+val COLOR_SUCCESS_START = Color(0xFF16BB26)
+val COLOR_SUCCESS_END = Color(0xFF138A04)
 
-val COLOR_DANGER_START = Color(0xFFF6655A)
-val COLOR_DANGER_END = Color(0xFFD97570)
+val COLOR_DANGER_START = Color(0xFFEF4444)
+val COLOR_DANGER_END = Color(0xFFDC2626)
 
-val COLOR_INFO_START = Color(0xFF9277DC)
-val COLOR_INFO_END = Color(0xFF8B75C9)
+val COLOR_INFO_START = Color(0xFF8B5CF6)
+val COLOR_INFO_END = Color(0xFF7C3AED)
 
-val COLOR_WARNING_START = Color(0xFFEEC856)
-val COLOR_WARNING_END = Color(0xFFD4A356)
+val COLOR_WARNING_START = Color(0xFFF59E0B)
+val COLOR_WARNING_END = Color(0xFFD97706)
 
-val COLOR_PINK_START = Color(0xFFEF6DAA)
-val COLOR_PINK_END = Color(0xFFD178A3)
+val COLOR_PINK_START = Color(0xFFEC4899)
+val COLOR_PINK_END = Color(0xFFBE185D)
 
-val COLOR_CYAN_START = Color(0xFF68C5E1)
-val COLOR_CYAN_END = Color(0xFF5BAEC9)
+val COLOR_CYAN_START = Color(0xFF08A485)
+val COLOR_CYAN_END = Color(0xFF0E7490)
 
-val COLOR_INDIGO_START = Color(0xFF6E74EE)
-val COLOR_INDIGO_END = Color(0xFF6E72CC)
+val COLOR_CYAN_START_card = Color(0xFF61850F)
+val COLOR_CYAN_END_card = Color(0xFF364D02)
 
-val COLOR_GRAY_START = Color(0xFF647191)
-val COLOR_GRAY_END = Color(0xFF7A8899)
+val COLOR_INDIGO_START = Color(0xFF6366F1)
+val COLOR_INDIGO_END = Color(0xFF4338CA)
 
+val BG_COLOR = Color(0xFFDFEEEE)
+val TEXT_DARK = Color(0xFF1E293B)
+val TEXT_LIGHT = Color(0xFF64748B)
 
-// تابع کمکی برای نمایش پول با کاما
-fun formatMoney(value: Double): String {
-    val formatter = NumberFormat.getNumberInstance(Locale("fa", "IR"))
+fun formatMoneyHome(value: Double): String {
+    val formatter = NumberFormat.getNumberInstance(Locale.US)
     return "${formatter.format(value.toLong())} تومان"
 }
 
@@ -86,31 +87,21 @@ fun HomeScreen(
 
     var totalIncome by remember { mutableStateOf(0.0) }
     var totalExpense by remember { mutableStateOf(0.0) }
-    var accountsCount by remember { mutableStateOf(0) }
     var totalBalance by remember { mutableStateOf(0.0) }
     var initialBalance by remember { mutableStateOf(0.0) }
     var isDarkMode by remember { mutableStateOf(false) }
 
-
     LaunchedEffect(Unit) {
-        scope.launch {
-            repo.getTotalIncome().collect { totalIncome = it }
-        }
-        scope.launch {
-            repo.getTotalExpense().collect { totalExpense = it }
-        }
+        scope.launch { repo.getTotalIncome().collect { totalIncome = it } }
+        scope.launch { repo.getTotalExpense().collect { totalExpense = it } }
         scope.launch {
             repo.getAllAccounts().collect { accounts ->
-                accountsCount = accounts.size
                 totalBalance = accounts.sumOf { it.balance }
             }
         }
-        scope.launch {
-            repo.getTotalInitialBalance().collect { initial ->
-                initialBalance = initial
-            }
-        }
+        scope.launch { repo.getTotalInitialBalance().collect { initialBalance = it } }
     }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -118,7 +109,7 @@ fun HomeScreen(
                     Text(
                         "💰 مدیریت امور مالی",
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF111213)
+                        color = Color.White
                     )
                 },
                 actions = {
@@ -140,193 +131,160 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(Color(0x5B74CDD9))
+                .background(BG_COLOR)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(horizontal = 8.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // ─── کارت‌های درآمد و هزینه ───
-            // ─── موجودی اولیه کل ───
-            BalanceCard(
-                icon = "💰",
-                title = "موجودی اولیه کل",
-                value = initialBalance,
-                startColor = COLOR_PRIMARY_START,
-                endColor = COLOR_PRIMARY_END,
-                isLarge = false
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // ─── درآمد کل ───
-            BalanceCard(
-                icon = "💵",
-                title = "درآمد کل",
-                value = totalIncome - initialBalance,
-                startColor = COLOR_SUCCESS_START,
-                endColor = COLOR_SUCCESS_END,
-                isLarge = false
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // ─── هزینه کل ───
-            BalanceCard(
-                icon = "💸",
-                title = "هزینه کل",
-                value = totalExpense,
-                startColor = COLOR_DANGER_START,
-                endColor = COLOR_DANGER_END,
-                isLarge = false
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // ─── موجودی کل (فونت بزرگ‌تر) ───
-            BalanceCard(
-                icon = "💰",
-                title = "موجودی کل",
-                value = totalBalance,
-                startColor = COLOR_INFO_START,
-                endColor = COLOR_INFO_END,
-                isLarge = true
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // ─── عنوان منو ───
-            Text(
-                text = "━━━ منوی اصلی ━━━",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF1E293B)
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // ─── ردیف ۱ ───
+            // ─── کارت درآمد و هزینه ───
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                MenuButton(
-                    icon = "➕",
-                    title = "ثبت حساب",
+                StatCard(
+                    icon = Icons.Default.ArrowUpward,
+                    title = "درآمد کل",
+                    value = totalIncome - initialBalance,
                     startColor = COLOR_SUCCESS_START,
                     endColor = COLOR_SUCCESS_END,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onNavigate(Routes.ADD_CARD) }
+                    modifier = Modifier.weight(1f)
                 )
-                MenuButton(
-                    icon = "💳",
-                    title = "نمایش حساب ها",
-                    startColor = COLOR_PRIMARY_START,
-                    endColor = COLOR_PRIMARY_END,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onNavigate(Routes.CARD_LIST) }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // ─── ردیف ۲ ───
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                MenuButton(
-                    icon = "💵",
-                    title = "ثبت درآمد",
-                    startColor = Color(0xFF22C55E),
-                    endColor = Color(0xFF15803D),
-                    modifier = Modifier.weight(1f),
-                    onClick = { onNavigate(Routes.INCOME) }
-                )
-                MenuButton(
-                    icon = "💸",
-                    title = "ثبت هزینه",
+                StatCard(
+                    icon = Icons.Default.ArrowDownward,
+                    title = "هزینه کل",
+                    value = totalExpense,
                     startColor = COLOR_DANGER_START,
                     endColor = COLOR_DANGER_END,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onNavigate(Routes.EXPENSE) }
+                    modifier = Modifier.weight(1f)
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // ─── ردیف ۳ ───
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            // ─── کارت موجودی کل ───
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(80.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
             ) {
-                MenuButton(
-                    icon = "🔁",
-                    title = "انتقال",
-                    startColor = COLOR_WARNING_START,
-                    endColor = COLOR_WARNING_END,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onNavigate(Routes.TRANSFER) }
-                )
-                MenuButton(
-                    icon = "🏦",
-                    title = "پس‌انداز",
-                    startColor = COLOR_PINK_START,
-                    endColor = COLOR_PINK_END,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onNavigate(Routes.SAVING) }
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.linearGradient(colors = listOf(COLOR_INFO_START, COLOR_INFO_END))
+                        )
+                        .padding(horizontal = 16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(horizontalAlignment = Alignment.Start) {
+                            Text(text = "💰 موجودی کل", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(text = "موجودی اولیه: ${formatMoneyHome(initialBalance)}", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp)
+                        }
+                        Text(text = formatMoneyHome(totalBalance), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // ─── ردیف ۴ ───
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                MenuButton(
-                    icon = "📊",
-                    title = "گزارش‌ها",
-                    startColor = COLOR_INFO_START,
-                    endColor = COLOR_INFO_END,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onNavigate(Routes.REPORTS) }
-                )
-                MenuButton(
-                    icon = "📩",
-                    title = "پیامک‌ها",
-                    startColor = COLOR_CYAN_START,
-                    endColor = COLOR_CYAN_END,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onNavigate(Routes.SMS) }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // ─── ردیف ۵ (پشتیبان‌گیری) ───
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // ─── دکمه پشتیبان‌گیری (مستطیلی پهن) ───
-            FullWidthBackupButton(
-                icon = "💾",
-                title = "پشتیبان‌گیری",
-                startColor = COLOR_INDIGO_START,
-                endColor = COLOR_INDIGO_END,
-                onClick = { onNavigate("backup") }
+            // ─── دکمه‌های منو (با رنگ‌های اختصاصی شما) ───
+            val menuItems = listOf(
+                MenuItem("💳 نمایش کارت‌ها", Icons.Default.CreditCard, COLOR_PRIMARY_START, COLOR_PRIMARY_END, Routes.CARD_LIST),
+                MenuItem("➕ ثبت حساب", Icons.Default.AddCircle, COLOR_CYAN_START_card, COLOR_CYAN_END_card, Routes.ADD_CARD), // رنگ اختصاصی شما
+                MenuItem("💵 ثبت درآمد", Icons.Default.Money, COLOR_SUCCESS_START, COLOR_SUCCESS_END, Routes.INCOME),
+                MenuItem("💸 ثبت هزینه", Icons.Default.ShoppingCart, COLOR_DANGER_START, COLOR_DANGER_END, Routes.EXPENSE),
+                MenuItem("🔁 انتقال", Icons.Default.SwapHoriz, COLOR_WARNING_START, COLOR_WARNING_END, Routes.TRANSFER),
+                MenuItem("🏦 پس‌انداز", Icons.Default.Savings, COLOR_PINK_START, COLOR_PINK_END, Routes.SAVING),
+                MenuItem("📊 گزارش‌ها", Icons.Default.BarChart, COLOR_INFO_START, COLOR_INFO_END, Routes.REPORTS),
+                MenuItem("📩 پیامک‌ها", Icons.Default.Message, COLOR_CYAN_START, COLOR_CYAN_END, Routes.SMS)
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            for (i in menuItems.indices step 2) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (i < menuItems.size) {
+                        val item = menuItems[i]
+                        GradientMenuCard(
+                            title = item.title,
+                            icon = item.icon,
+                            startColor = item.startColor,
+                            endColor = item.endColor,
+                            modifier = Modifier.weight(1f),
+                            onClick = { if (item.route.isNotEmpty()) onNavigate(item.route) }
+                        )
+                    }
+                    if (i + 1 < menuItems.size) {
+                        val item = menuItems[i + 1]
+                        GradientMenuCard(
+                            title = item.title,
+                            icon = item.icon,
+                            startColor = item.startColor,
+                            endColor = item.endColor,
+                            modifier = Modifier.weight(1f),
+                            onClick = { if (item.route.isNotEmpty()) onNavigate(item.route) }
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // ─── دکمه پشتیبان‌گیری ───
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(75.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Brush.linearGradient(colors = listOf(COLOR_INDIGO_START, COLOR_INDIGO_END))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(imageVector = Icons.Default.CloudUpload, contentDescription = "پشتیبان", tint = Color.White)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "💾 پشتیبان‌گیری", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
 
-// ─────────────────────────────────────────
-// حساب آمار
-// ─────────────────────────────────────────
+data class MenuItem(
+    val title: String,
+    val icon: ImageVector,
+    val startColor: Color,
+    val endColor: Color,
+    val route: String
+)
+
 @Composable
 fun StatCard(
-    icon: String,
+    icon: ImageVector,
     title: String,
     value: Double,
     startColor: Color,
@@ -334,36 +292,28 @@ fun StatCard(
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier.height(115.dp),
-        shape = RoundedCornerShape(18.dp),
+        modifier = modifier.height(100.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(startColor, endColor)
-                    )
-                ),
+                .background(Brush.linearGradient(colors = listOf(startColor, endColor))),
             contentAlignment = Alignment.Center
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Text(text = icon, fontSize = 22.sp)
+                Icon(imageVector = icon, contentDescription = title, tint = Color.White, modifier = Modifier.size(24.dp))
                 Spacer(modifier = Modifier.height(4.dp))
+                Text(text = title, fontSize = 13.sp, color = Color.White.copy(alpha = 0.95f))
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = title,
-                    fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.95f)
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = formatMoney(value),
-                    fontSize = 13.sp,
+                    text = formatMoneyHome(value),
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
                     textAlign = TextAlign.Center
@@ -373,71 +323,10 @@ fun StatCard(
     }
 }
 
-// ─────────────────────────────────────────
-// حساب موجودی کل
-// ─────────────────────────────────────────
 @Composable
-fun BalanceCard(
-    icon: String,
+fun GradientMenuCard(
     title: String,
-    value: Double,
-    startColor: Color,
-    endColor: Color,
-    isLarge: Boolean = false
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(if (isLarge) 80.dp else 65.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isLarge) 8.dp else 5.dp
-        )
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.linearGradient(colors = listOf(startColor, endColor))
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 18.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = icon, fontSize = if (isLarge) 24.sp else 20.sp)
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = title,
-                        fontSize = if (isLarge) 18.sp else 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
-                Text(
-                    text = formatMoney(value),
-                    fontSize = if (isLarge) 20.sp else 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-            }
-        }
-    }
-}
-
-// ─────────────────────────────────────────
-// دکمه منو — با گرادیان + انیمیشن
-// ─────────────────────────────────────────
-@Composable
-fun MenuButton(
-    icon: String,
-    title: String,
+    icon: ImageVector,
     startColor: Color,
     endColor: Color,
     modifier: Modifier = Modifier,
@@ -448,20 +337,20 @@ fun MenuButton(
 
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.95f else 1f,
-        animationSpec = tween(durationMillis = 100),
+        animationSpec = tween(100),
         label = "scale"
     )
 
     Card(
         modifier = modifier
-            .height(100.dp)
+            .height(90.dp)
             .scale(scale)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick
             ),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
         elevation = CardDefaults.cardElevation(
             defaultElevation = if (isPressed) 2.dp else 6.dp
@@ -470,77 +359,34 @@ fun MenuButton(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(startColor, endColor)
-                    )
-                ),
+                .background(Brush.linearGradient(colors = listOf(startColor, endColor))),
             contentAlignment = Alignment.Center
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(text = icon, fontSize = 32.sp)
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = title,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-    }
-}
-@Composable
-fun FullWidthBackupButton(
-        icon: String,
-        title: String,
-        startColor: Color,
-        endColor: Color,
-        onClick: () -> Unit
-) {
-        val interactionSource = remember { MutableInteractionSource() }
-        val isPressed by interactionSource.collectIsPressedAsState()
-
-        val scale by animateFloatAsState(
-            targetValue = if (isPressed) 0.97f else 1f,
-            animationSpec = tween(100),
-            label = "scale"
-        )
-
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(70.dp)
-                .scale(scale)
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = onClick
-                ),
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-            elevation = CardDefaults.cardElevation(
-                defaultElevation = if (isPressed) 2.dp else 6.dp
-            )
-        ) {
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(
-                        Brush.linearGradient(colors = listOf(startColor, endColor))
-                    ),
-                contentAlignment = Alignment.Center
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Text(text = icon, fontSize = 26.sp)
+                    Box(
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = title,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
                         text = title,
@@ -549,6 +395,13 @@ fun FullWidthBackupButton(
                         color = Color.White
                     )
                 }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.size(26.dp)
+                )
             }
         }
- }
+    }
+}

@@ -13,10 +13,13 @@ android {
         applicationId = "com.hkaboodvand.finacemobile"
         minSdk = 29
         targetSdk = 34
-        versionCode = 6
-        versionName = "2.8"
+        versionCode = 7
+        versionName = "3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+
+
     }
 
     buildTypes {
@@ -85,4 +88,6 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+
+
 }
