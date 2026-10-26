@@ -1,11 +1,6 @@
 package com.hkaboodvand.finacemobile.ui.screens
 
-import android.content.ContentValues
-import android.content.Context
 import android.net.Uri
-import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
@@ -128,7 +123,70 @@ fun BackupScreen(
     // Snackbar
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Launcher برای بازیابی
+    // ─── توابع ساخت JSON و CSV (قبل از Launcherها تعریف بشن) ───
+    fun createJsonBackup(accounts: List<Account>, transactions: List<Transaction>): String {
+        val root = JSONObject()
+        root.put("version", 1)
+        root.put("created_at", SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date()))
+
+        val accountsArr = JSONArray()
+        accounts.forEach { acc ->
+            accountsArr.put(JSONObject().apply {
+                put("id", acc.id)
+                put("name", acc.name)
+                put("bank", acc.bank)
+                put("cardNumber", acc.cardNumber)
+                put("balance", acc.balance)
+                put("type", acc.type)
+            })
+        }
+        root.put("accounts", accountsArr)
+
+        val txArr = JSONArray()
+        transactions.forEach { tx ->
+            txArr.put(JSONObject().apply {
+                put("id", tx.id)
+                put("accountId", tx.accountId)
+                put("date", tx.date)
+                put("type", tx.type)
+                put("category", tx.category)
+                put("amount", tx.amount)
+                put("place", tx.place)
+                put("description", tx.description)
+                put("balanceAfter", tx.balanceAfter)
+            })
+        }
+        root.put("transactions", txArr)
+
+        return root.toString(2)
+    }
+
+    fun createCsvContent(
+        accounts: List<Account>,
+        transactions: List<Transaction>
+    ): String {
+        val sb = StringBuilder()
+        sb.append("\uFEFF")
+        sb.append("ردیف,تاریخ,تاریخ میلادی,نوع,دسته,مبلغ,کارت,بانک,محل,توضیحات\n")
+
+        transactions.sortedByDescending { it.date }.forEachIndexed { index, tx ->
+            val account = accounts.find { it.id == tx.accountId }
+            sb.append("${index + 1},")
+            sb.append("${toJalaliBK(tx.date)},")
+            sb.append("${tx.date.take(10)},")
+            sb.append("${tx.type},")
+            sb.append("${tx.category.ifEmpty { "—" }},")
+            sb.append("${tx.amount.toLong()},")
+            sb.append("${account?.name ?: "?"},")
+            sb.append("${account?.bank ?: "?"},")
+            sb.append("${tx.place.ifEmpty { "—" }},")
+            sb.append("\"${tx.description.ifEmpty { "—" }.replace("\"", "\"\"")}\"\n")
+        }
+
+        return sb.toString()
+    }
+
+    // ─── Launcher برای بازیابی ───
     val restoreLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
@@ -156,6 +214,68 @@ fun BackupScreen(
         }
     }
 
+    // ─── Launcher برای ذخیره JSON (SAF) ───
+    val createJsonLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                try {
+                    val accounts = repo.getAllAccountsOnce()
+                    val transactions = repo.getAllTransactionsOnce()
+
+                    if (accounts.isEmpty() && transactions.isEmpty()) {
+                        snackbarHostState.showSnackbar("⚠️ داده‌ای برای پشتیبان نیست")
+                        return@launch
+                    }
+
+                    val json = createJsonBackup(accounts, transactions)
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                            OutputStreamWriter(outputStream, Charsets.UTF_8).use { writer ->
+                                writer.write(json)
+                            }
+                        }
+                    }
+                    snackbarHostState.showSnackbar("✅ پشتیبان JSON ذخیره شد")
+                } catch (e: Exception) {
+                    snackbarHostState.showSnackbar("❌ خطا: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ─── Launcher برای ذخیره CSV (SAF) ───
+    val createCsvLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                try {
+                    val accounts = repo.getAllAccountsOnce()
+                    val transactions = repo.getAllTransactionsOnce()
+
+                    if (transactions.isEmpty()) {
+                        snackbarHostState.showSnackbar("⚠️ تراکنشی برای خروجی نیست")
+                        return@launch
+                    }
+
+                    val csv = createCsvContent(accounts, transactions)
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                            OutputStreamWriter(outputStream, Charsets.UTF_8).use { writer ->
+                                writer.write(csv)
+                            }
+                        }
+                    }
+                    snackbarHostState.showSnackbar("✅ فایل Excel (CSV) ذخیره شد")
+                } catch (e: Exception) {
+                    snackbarHostState.showSnackbar("❌ خطا: ${e.message}")
+                }
+            }
+        }
+    }
+
     // بارگذاری آمار
     LaunchedEffect(Unit) {
         repo.getAllAccounts().collect { list ->
@@ -167,110 +287,6 @@ fun BackupScreen(
         repo.getAllTransactions().collect { list ->
             transactionsCount = list.size
             isLoading = false
-        }
-    }
-
-    // ─── توابع ───
-    fun createJsonBackup(accounts: List<Account>, transactions: List<Transaction>): String {
-        val root = JSONObject()
-        root.put("version", 1)
-        root.put("created_at", SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date()))
-
-        // Accounts
-        val accountsArr = JSONArray()
-        accounts.forEach { acc ->
-            accountsArr.put(JSONObject().apply {
-                put("id", acc.id)
-                put("name", acc.name)
-                put("bank", acc.bank)
-                put("cardNumber", acc.cardNumber)
-                put("balance", acc.balance)
-                put("type", acc.type)
-            })
-        }
-        root.put("accounts", accountsArr)
-
-        // Transactions
-        val txArr = JSONArray()
-        transactions.forEach { tx ->
-            txArr.put(JSONObject().apply {
-                put("id", tx.id)
-                put("accountId", tx.accountId)
-                put("date", tx.date)
-                put("type", tx.type)
-                put("category", tx.category)
-                put("amount", tx.amount)
-                put("place", tx.place)
-                put("description", tx.description)
-                put("balanceAfter", tx.balanceAfter)
-            })
-        }
-        root.put("transactions", txArr)
-
-        return root.toString(2)
-    }
-
-    fun createCsvContent(
-        accounts: List<Account>,
-        transactions: List<Transaction>
-    ): String {
-        val sb = StringBuilder()
-
-        // BOM برای Excel فارسی
-        sb.append("\uFEFF")
-
-        // Header
-        sb.append("ردیف,تاریخ,تاریخ میلادی,نوع,دسته,مبلغ,کارت,بانک,محل,توضیحات\n")
-
-        transactions.sortedByDescending { it.date }.forEachIndexed { index, tx ->
-            val account = accounts.find { it.id == tx.accountId }
-            sb.append("${index + 1},")
-            sb.append("${toJalaliBK(tx.date)},")
-            sb.append("${tx.date.take(10)},")
-            sb.append("${tx.type},")
-            sb.append("${tx.category.ifEmpty { "—" }},")
-            sb.append("${tx.amount.toLong()},")
-            sb.append("${account?.name ?: "?"},")
-            sb.append("${account?.bank ?: "?"},")
-            sb.append("${tx.place.ifEmpty { "—" }},")
-            sb.append("\"${tx.description.ifEmpty { "—" }.replace("\"", "\"\"")}\"\n")
-        }
-
-        return sb.toString()
-    }
-
-    suspend fun saveToDownloads(
-        filename: String,
-        mimeType: String,
-        content: String
-    ): Uri? {
-        return withContext(Dispatchers.IO) {
-            try {
-                val contentValues = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
-                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                    }
-                }
-
-                val resolver = context.contentResolver
-                val uri = resolver.insert(
-                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-                    contentValues
-                ) ?: return@withContext null
-
-                resolver.openOutputStream(uri)?.use { outputStream ->
-                    OutputStreamWriter(outputStream, Charsets.UTF_8).use { writer ->
-                        writer.write(content)
-                    }
-                }
-
-                uri
-            } catch (e: Exception) {
-                e.printStackTrace()
-                null
-            }
         }
     }
 
@@ -373,7 +389,7 @@ fun BackupScreen(
                     Spacer(modifier = Modifier.height(6.dp))
 
                     Text(
-                        text = "فایل‌ها در پوشه‌ی Downloads ذخیره می‌شن.",
+                        text = "با زدن دکمه، محل ذخیره فایل را انتخاب کنید (مثلاً پوشه Downloads).",
                         fontSize = 12.sp,
                         color = BK_TEXT_LIGHT,
                         textAlign = TextAlign.Right
@@ -389,40 +405,11 @@ fun BackupScreen(
                         startColor = BK_SUCCESS_START,
                         endColor = BK_SUCCESS_END,
                         onClick = {
-                            scope.launch {
-                                try {
-                                    val accounts = repo.getAllAccountsOnce()
-                                    val transactions = repo.getAllTransactionsOnce()
-
-                                    if (accounts.isEmpty() && transactions.isEmpty()) {
-                                        snackbarHostState.showSnackbar("⚠️ داده‌ای برای پشتیبان نیست")
-                                        return@launch
-                                    }
-
-                                    val json = createJsonBackup(accounts, transactions)
-                                    val timestamp = SimpleDateFormat(
-                                        "yyyy-MM-dd_HH-mm-ss",
-                                        Locale.US
-                                    ).format(Date())
-                                    val filename = "finance_backup_$timestamp.json"
-
-                                    val uri = saveToDownloads(
-                                        filename,
-                                        "application/json",
-                                        json
-                                    )
-
-                                    if (uri != null) {
-                                        snackbarHostState.showSnackbar(
-                                            "✅ پشتیبان ذخیره شد:\n$filename"
-                                        )
-                                    } else {
-                                        snackbarHostState.showSnackbar("❌ خطا در ذخیره")
-                                    }
-                                } catch (e: Exception) {
-                                    snackbarHostState.showSnackbar("❌ ${e.message}")
-                                }
-                            }
+                            val timestamp = SimpleDateFormat(
+                                "yyyy-MM-dd_HH-mm-ss",
+                                Locale.US
+                            ).format(Date())
+                            createJsonLauncher.launch("finance_backup_$timestamp.json")
                         }
                     )
 
@@ -436,40 +423,11 @@ fun BackupScreen(
                         startColor = BK_CYAN_START,
                         endColor = BK_CYAN_END,
                         onClick = {
-                            scope.launch {
-                                try {
-                                    val accounts = repo.getAllAccountsOnce()
-                                    val transactions = repo.getAllTransactionsOnce()
-
-                                    if (transactions.isEmpty()) {
-                                        snackbarHostState.showSnackbar("⚠️ تراکنشی برای خروجی نیست")
-                                        return@launch
-                                    }
-
-                                    val csv = createCsvContent(accounts, transactions)
-                                    val timestamp = SimpleDateFormat(
-                                        "yyyy-MM-dd_HH-mm-ss",
-                                        Locale.US
-                                    ).format(Date())
-                                    val filename = "finance_transactions_$timestamp.csv"
-
-                                    val uri = saveToDownloads(
-                                        filename,
-                                        "text/csv",
-                                        csv
-                                    )
-
-                                    if (uri != null) {
-                                        snackbarHostState.showSnackbar(
-                                            "✅ فایل Excel ذخیره شد:\n$filename"
-                                        )
-                                    } else {
-                                        snackbarHostState.showSnackbar("❌ خطا در ذخیره")
-                                    }
-                                } catch (e: Exception) {
-                                    snackbarHostState.showSnackbar("❌ ${e.message}")
-                                }
-                            }
+                            val timestamp = SimpleDateFormat(
+                                "yyyy-MM-dd_HH-mm-ss",
+                                Locale.US
+                            ).format(Date())
+                            createCsvLauncher.launch("finance_transactions_$timestamp.csv")
                         }
                     )
                 }
@@ -630,7 +588,6 @@ suspend fun restoreFromJson(
     return try {
         val root = JSONObject(jsonText)
 
-        // Accounts
         val accountsArr = root.optJSONArray("accounts") ?: JSONArray()
         val accounts = mutableListOf<Account>()
         for (i in 0 until accountsArr.length()) {
@@ -647,7 +604,6 @@ suspend fun restoreFromJson(
             )
         }
 
-        // Transactions
         val txArr = root.optJSONArray("transactions") ?: JSONArray()
         val transactions = mutableListOf<Transaction>()
         for (i in 0 until txArr.length()) {

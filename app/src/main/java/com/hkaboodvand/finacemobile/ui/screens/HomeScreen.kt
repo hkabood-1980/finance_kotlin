@@ -244,6 +244,7 @@ fun HomeScreen(
 
             // ─── دکمه پشتیبان‌گیری ───
             Card(
+                onClick = { onNavigate(Routes.BACKUP) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(75.dp),
