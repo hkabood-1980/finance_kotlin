@@ -30,3 +30,9 @@ tmp/
 
 # Logs
 *.log
+# Gradle daemon JVM config (auto-generated)
+# Build outputs (APK/AAB)
+app/release/
+*.apk
+*.aab
+gradle-daemon-jvm.properties
